@@ -207,6 +207,34 @@
             text-shadow: 0 0 10px rgba(255, 0, 0, 0.4);
         }
 
+        /* ==========================================
+     CAROUSEL ITEMS
+     ========================================== */
+        .carousel-track {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+
+        .carousel-item {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.45s cubic-bezier(0.77, 0, 0.175, 1),
+                        opacity 0.45s ease;
+            will-change: transform, opacity;
+        }
+
+        /* States set by JS */
+        .carousel-item.state-current  { transform: translateX(0);     opacity: 1; }
+        .carousel-item.state-right    { transform: translateX(110%);  opacity: 0; }
+        .carousel-item.state-left     { transform: translateX(-110%); opacity: 0; }
+        .carousel-item.state-no-anim  { transition: none; }
+
         /* CAROUSEL ARROWS */
         .arrow {
             position: absolute;
@@ -468,40 +496,48 @@
                 </div>
             </div>
 
-            <!-- LIGHTSABER VIDEO + HITBOX -->
-            <div class="saber-display">
-                <div class="saber-media-wrapper">
-                    <!-- Forward video -->
-                    <video
-                        id="saberVideo"
-                        class="saber-video"
-                        src="{{ url_for('static', filename='assets/tracery_1_720p.webm') }}"
-                        preload="auto"
-                        muted
-                        playsinline
-                    ></video>
-                    <!-- Reversed video (pre-rendered), hidden by default -->
-                    <video
-                        id="saberVideoRev"
-                        class="saber-video"
-                        src="{{ url_for('static', filename='assets/tracery_1_720p_rev.webm') }}"
-                        preload="auto"
-                        muted
-                        playsinline
-                        style="display:none;"
-                    ></video>
-                    <!-- Hidden reference image for alpha sampling -->
-                    <img
-                        id="saberHitbox"
-                        class="saber-hitbox"
-                        src="{{ url_for('static', filename='assets/reference mouse.webp') }}"
-                        alt=""
-                        crossorigin="anonymous"
-                        draggable="false"
-                    />
-                    <!-- Canvas: same size as image, invisible, used for pixel-perfect mouse tracking -->
-                    <canvas id="saberCanvas" class="saber-canvas"></canvas>
+            <!-- CAROUSEL TRACK -->
+            <div class="carousel-track" id="carouselTrack">
+
+                <!-- ITEM 0 — LIGHT SABER (current) -->
+                <div class="carousel-item state-current" data-index="0">
+                    <div class="saber-display" style="position:relative;width:100%;height:100%;pointer-events:none;">
+                        <div class="saber-media-wrapper">
+                            <video id="saberVideo" class="saber-video"
+                                src="{{ url_for('static', filename='assets/tracery_1_720p.webm') }}"
+                                preload="auto" muted playsinline></video>
+                            <video id="saberVideoRev" class="saber-video"
+                                src="{{ url_for('static', filename='assets/tracery_1_720p_rev.webm') }}"
+                                preload="auto" muted playsinline style="display:none;"></video>
+                            <img id="saberHitbox" class="saber-hitbox"
+                                src="{{ url_for('static', filename='assets/reference mouse.webp') }}"
+                                alt="" crossorigin="anonymous" draggable="false"/>
+                            <canvas id="saberCanvas" class="saber-canvas"></canvas>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- ITEM 1 -->
+                <div class="carousel-item state-right" data-index="1">
+                    <div style="text-align:center;color:#333;font-size:13px;letter-spacing:2px;">
+                        ITEM 02<br><span style="font-size:10px;color:#222;">// CLASSIFIED</span>
+                    </div>
+                </div>
+
+                <!-- ITEM 2 -->
+                <div class="carousel-item state-right" data-index="2">
+                    <div style="text-align:center;color:#333;font-size:13px;letter-spacing:2px;">
+                        ITEM 03<br><span style="font-size:10px;color:#222;">// CLASSIFIED</span>
+                    </div>
+                </div>
+
+                <!-- ITEM 3 -->
+                <div class="carousel-item state-right" data-index="3">
+                    <div style="text-align:center;color:#333;font-size:13px;letter-spacing:2px;">
+                        ITEM 04<br><span style="font-size:10px;color:#222;">// CLASSIFIED</span>
+                    </div>
+                </div>
+
             </div>
 
             <!-- CAROUSEL ARROWS -->
@@ -561,17 +597,69 @@
     </div>
 
     <script>
+    // ── CAROUSEL ──────────────────────────────────────────────────────────────
+    (function () {
+        const items   = Array.from(document.querySelectorAll('.carousel-item'));
+        const dots    = Array.from(document.querySelectorAll('.dot'));
+        const arrowL  = document.querySelector('.arrow-left');
+        const arrowR  = document.querySelector('.arrow-right');
+        const total   = items.length;
+        let current   = 0;
+        let animating = false;
+
+        function goTo(next, direction) {
+            if (animating || next === current) return;
+            animating = true;
+
+            const prev = current;
+            current = next;
+
+            // Snap incoming item to off-screen instantly (no transition)
+            items[next].classList.add('state-no-anim');
+            items[next].classList.remove('state-left', 'state-right', 'state-current');
+            items[next].classList.add(direction === 'right' ? 'state-right' : 'state-left');
+
+            // Force reflow so the snap takes effect before we add transition back
+            items[next].offsetWidth;
+            items[next].classList.remove('state-no-anim');
+
+            // Now animate both
+            items[prev].classList.remove('state-current');
+            items[prev].classList.add(direction === 'right' ? 'state-left' : 'state-right');
+
+            items[next].classList.remove('state-left', 'state-right');
+            items[next].classList.add('state-current');
+
+            // Update dots
+            dots.forEach((d, i) => d.classList.toggle('active', i === current));
+
+            // Unlock after transition
+            setTimeout(() => { animating = false; }, 460);
+        }
+
+        arrowR.addEventListener('click', () => {
+            goTo((current + 1) % total, 'right');
+        });
+
+        arrowL.addEventListener('click', () => {
+            goTo((current - 1 + total) % total, 'left');
+        });
+
+        dots.forEach((dot, i) => {
+            dot.addEventListener('click', () => {
+                goTo(i, i > current ? 'right' : 'left');
+            });
+        });
+    })();
+
+    // ── SABER HOVER ───────────────────────────────────────────────────────────
     (function () {
         const hitImg = document.getElementById('saberHitbox');
         const canvas = document.getElementById('saberCanvas');
         const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+        const refEl  = document.getElementById('saberVideo');
 
-        // ── 1. ALPHA MAP ──────────────────────────────────────────────────────
-        let alphaReady = false;
-        let imgW = 0, imgH = 0;
-
-        // We size the canvas against the forward video element
-        const refEl = document.getElementById('saberVideo');
+        let alphaReady = false, imgW = 0, imgH = 0;
 
         function buildAlphaMap() {
             imgW = hitImg.naturalWidth;
@@ -584,11 +672,8 @@
             alphaReady = true;
         }
 
-        if (hitImg.complete && hitImg.naturalWidth) {
-            buildAlphaMap();
-        } else {
-            hitImg.addEventListener('load', buildAlphaMap);
-        }
+        if (hitImg.complete && hitImg.naturalWidth) buildAlphaMap();
+        else hitImg.addEventListener('load', buildAlphaMap);
 
         window.addEventListener('resize', () => {
             if (!alphaReady) return;
@@ -596,35 +681,21 @@
             canvas.style.height = refEl.offsetHeight + 'px';
         });
 
-        // ── 2. ALPHA HIT TEST ─────────────────────────────────────────────────
-        const ALPHA_THRESHOLD = 10;
-
         function isOnSaber(clientX, clientY) {
             if (!alphaReady) return false;
             const rect = canvas.getBoundingClientRect();
             const px = Math.round(((clientX - rect.left) / rect.width)  * imgW);
             const py = Math.round(((clientY - rect.top)  / rect.height) * imgH);
             if (px < 0 || py < 0 || px >= imgW || py >= imgH) return false;
-            return ctx.getImageData(px, py, 1, 1).data[3] > ALPHA_THRESHOLD;
+            return ctx.getImageData(px, py, 1, 1).data[3] > 10;
         }
 
-        // ── 3. TWO VIDEOS ─────────────────────────────────────────────────────
-        // vidFwd  — forward video, visible by default
-        // vidRev  — pre-rendered reversed video, shown on mouse leave
         const vidFwd = document.getElementById('saberVideo');
         const vidRev = document.getElementById('saberVideoRev');
 
-        function showFwd() {
-            vidFwd.style.display = 'block';
-            vidRev.style.display = 'none';
-        }
+        function showFwd() { vidFwd.style.display = 'block'; vidRev.style.display = 'none'; }
+        function showRev() { vidFwd.style.display = 'none';  vidRev.style.display = 'block'; }
 
-        function showRev() {
-            vidFwd.style.display = 'none';
-            vidRev.style.display = 'block';
-        }
-
-        // ── 4. HOVER LOGIC ────────────────────────────────────────────────────
         let isHovered = false;
 
         canvas.addEventListener('mousemove', (e) => {
@@ -633,62 +704,52 @@
             if (on && !isHovered)  { isHovered = true;  onEnter(); }
             if (!on && isHovered)  { isHovered = false; onLeave(); }
         });
-
         canvas.addEventListener('mouseleave', () => {
             if (isHovered) { isHovered = false; onLeave(); }
         });
 
         function onEnter() {
-            // Stop reverse, switch to forward from wherever it currently is
             vidRev.pause();
-            // Sync forward to mirror position (rev plays 0→end = fwd plays end→0)
-            const revPos = vidRev.currentTime;
-            const dur    = vidFwd.duration || vidRev.duration || 0;
-            vidFwd.currentTime = Math.max(0, dur - revPos);
+            const dur = vidFwd.duration || vidRev.duration || 0;
+            vidFwd.currentTime = Math.max(0, dur - vidRev.currentTime);
             showFwd();
-            if (vidFwd.currentTime < dur - 0.05) {
-                vidFwd.play().catch(() => {});
-            }
+            if (vidFwd.currentTime < dur - 0.05) vidFwd.play().catch(() => {});
         }
 
         function onLeave() {
-            // Stop forward, switch to reverse from mirrored position
             vidFwd.pause();
-            const fwdPos = vidFwd.currentTime;
-            const dur    = vidFwd.duration || vidRev.duration || 0;
-            vidRev.currentTime = Math.max(0, dur - fwdPos);
+            const dur = vidFwd.duration || vidRev.duration || 0;
+            vidRev.currentTime = Math.max(0, dur - vidFwd.currentTime);
             showRev();
             vidRev.play().catch(() => {});
         }
 
-        // Hold at last frame when each video ends
         vidFwd.addEventListener('ended', () => vidFwd.pause());
         vidRev.addEventListener('ended', () => vidRev.pause());
-
-        // Park both at frame 0 on load
         vidFwd.addEventListener('loadedmetadata', () => { vidFwd.currentTime = 0; });
         vidRev.addEventListener('loadedmetadata', () => { vidRev.currentTime = 0; });
     })();
-    // CRT GRAIN
+
+    // ── CRT GRAIN ─────────────────────────────────────────────────────────────
     (function(){
-      const c=document.getElementById('crtGrain');
-      if(!c)return;
-      const ctx=c.getContext('2d');
-      function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}
-      resize();
-      window.addEventListener('resize',resize);
-      function grain(){
-        const w=c.width,h=c.height;
-        const img=ctx.createImageData(w,h);
-        const d=img.data;
-        for(let i=0;i<d.length;i+=4){
-          const v=Math.random()*255|0;
-          d[i]=d[i+1]=d[i+2]=v;d[i+3]=18;
+        const c = document.getElementById('crtGrain');
+        if (!c) return;
+        const ctx = c.getContext('2d');
+        function resize() { c.width = window.innerWidth; c.height = window.innerHeight; }
+        resize();
+        window.addEventListener('resize', resize);
+        function grain() {
+            const w = c.width, h = c.height;
+            const img = ctx.createImageData(w, h);
+            const d = img.data;
+            for (let i = 0; i < d.length; i += 4) {
+                const v = Math.random() * 255 | 0;
+                d[i] = d[i+1] = d[i+2] = v; d[i+3] = 18;
+            }
+            ctx.putImageData(img, 0, 0);
+            requestAnimationFrame(grain);
         }
-        ctx.putImageData(img,0,0);
-        requestAnimationFrame(grain);
-      }
-      grain();
+        grain();
     })();
     </script>
 </body>
