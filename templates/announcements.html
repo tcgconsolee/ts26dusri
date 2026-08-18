@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='crt.css') }}">
 
 <style>
   /* ==========================================
@@ -274,7 +275,8 @@
   .btn-approve:hover {
     border-color: var(--text-red);
     color: var(--text-red);
-    box-shadow: 0 0 6px rgba(255, 0, 0, 0.3);
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5), 0 0 20px rgba(255, 0, 0, 0.2);
+    text-shadow: 0 0 6px rgba(255, 0, 0, 0.6);
   }
 
   .btn-approve.approved {
@@ -282,6 +284,13 @@
     color: var(--black);
     font-weight: 800;
     border-color: var(--text-red);
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+    cursor: default;
+  }
+
+  .btn-approve.approved:hover {
+    box-shadow: 0 0 14px rgba(255, 0, 0, 0.7), 0 0 28px rgba(255, 0, 0, 0.3);
+    text-shadow: none;
   }
 
   /* BOTTOM POST COMPOSER */
@@ -336,11 +345,79 @@
     background: var(--text-red);
     color: var(--black);
     border-color: var(--text-red);
-    box-shadow: 0 0 12px var(--red-glow);
+    box-shadow: 0 0 14px rgba(255, 0, 0, 0.7), 0 0 28px rgba(255, 0, 0, 0.3);
+  }
+
+  /* Posted announcement entries */
+  .posted-entry {
+    border: 1px solid var(--subpanel-border);
+    padding: 10px 14px;
+    background: #000;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .posted-entry-label {
+    color: var(--text-red);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+  }
+
+  .posted-entry-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--white);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .posted-entry-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Feed area inside post panel */
+  .post-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-red) #111;
+  }
+
+  .post-feed:empty::before {
+    content: '// NO BROADCASTS YET';
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #333;
+    letter-spacing: 1px;
   }
 </style>
 </head>
 <body>
+
+  <!-- CRT OVERLAY -->
+  <div class="crt-overlay">
+    <div class="crt-scanlines"></div>
+    <canvas class="crt-grain" id="crtGrain"></canvas>
+    <div class="crt-scanners">
+      <span style="--dur:9s;  --del:0s;   --op:0.13;"></span>
+      <span style="--dur:14s; --del:-5s;  --op:0.08;"></span>
+      <span style="--dur:11s; --del:-2s;  --op:0.10;"></span>
+    </div>
+    <div class="crt-glow"></div>
+  </div>
+  <div class="crt-bevel"></div>
 
   <!-- TOP NAVBAR -->
   <div class="navbar">
@@ -456,9 +533,10 @@
 
       <!-- BOTTOM RIGHT POST PANEL -->
       <div class="post-panel">
-        <textarea class="post-textarea" placeholder="COMPOSE SECTOR ANNOUNCEMENT..."></textarea>
+        <div class="post-feed" id="postFeed"></div>
+        <textarea class="post-textarea" id="postTextarea" placeholder="COMPOSE SECTOR ANNOUNCEMENT..."></textarea>
         <div class="post-actions">
-          <button class="btn-post">post</button>
+          <button class="btn-post" id="btnPost">post</button>
         </div>
       </div>
 
@@ -466,5 +544,79 @@
 
   </div>
 
+  <script>
+    // CRT GRAIN
+    (function(){
+      const c=document.getElementById('crtGrain');
+      if(!c)return;
+      const ctx=c.getContext('2d');
+      function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}
+      resize();
+      window.addEventListener('resize',resize);
+      function grain(){
+        const w=c.width,h=c.height;
+        const img=ctx.createImageData(w,h);
+        const d=img.data;
+        for(let i=0;i<d.length;i+=4){
+          const v=Math.random()*255|0;
+          d[i]=d[i+1]=d[i+2]=v;d[i+3]=18;
+        }
+        ctx.putImageData(img,0,0);
+        requestAnimationFrame(grain);
+      }
+      grain();
+    })();
+    // ── APPROVE BUTTONS ──────────────────────────────────────────────────────
+    document.querySelectorAll('.btn-approve').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('approved')) return; // already approved
+        btn.classList.add('approved');
+        btn.textContent = 'approved';
+      });
+    });
+
+    // ── POST BUTTON ───────────────────────────────────────────────────────────
+    const feed     = document.getElementById('postFeed');
+    const textarea = document.getElementById('postTextarea');
+    const btnPost  = document.getElementById('btnPost');
+
+    btnPost.addEventListener('click', () => {
+      const text = textarea.value.trim();
+      if (!text) return;
+
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        + '  //  ' + now.toLocaleDateString('en-GB').toUpperCase();
+
+      const entry = document.createElement('div');
+      entry.className = 'posted-entry';
+      entry.innerHTML = `
+        <div class="posted-entry-label">// BROADCAST TRANSMITTED</div>
+        <div class="posted-entry-text">${escapeHtml(text)}</div>
+        <div class="posted-entry-time">${timestamp}</div>
+      `;
+
+      // Newest on top
+      feed.insertBefore(entry, feed.firstChild);
+      textarea.value = '';
+      textarea.focus();
+
+      // Auto-scroll feed to top
+      feed.scrollTop = 0;
+    });
+
+    // Allow Ctrl+Enter to post
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) btnPost.click();
+    });
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
 </body>
 </html>

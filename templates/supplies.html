@@ -10,6 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=JetBrains+Mono:wght@400;700&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='crt.css') }}">
 
     <style>
         /* ==========================================
@@ -155,7 +156,7 @@
      ========================================== */
         .container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 3fr 1fr;
             gap: 24px;
             flex: 1;
         }
@@ -165,7 +166,7 @@
      ========================================== */
         .featured-panel {
             border: 1px solid var(--panel-border);
-            background: #020202;
+            background: #000000;
             padding: 28px;
             display: flex;
             flex-direction: column;
@@ -228,6 +229,60 @@
 
         .arrow-right {
             right: 20px;
+        }
+
+        /* ==========================================
+     LIGHTSABER DISPLAY AREA
+     ========================================== */
+        .saber-display {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .saber-media-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Reference image loaded into canvas — canvas is invisible, video sits on top */
+        .saber-hitbox {
+            display: none;
+        }
+
+        /* Canvas overlay — invisible but captures mouse for alpha testing */
+        .saber-canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            pointer-events: auto;
+            cursor: crosshair;
+            z-index: 2;
+        }
+
+        /* Video sits directly behind the canvas, same scale */
+        .saber-video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 85%;
+            max-height: 85%;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 1;
         }
 
         /* FEATURED FOOTER CONTROLS */
@@ -310,7 +365,7 @@
             background: #020202;
             padding: 16px;
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             grid-template-rows: repeat(4, 1fr);
             gap: 12px;
         }
@@ -325,11 +380,13 @@
             align-items: center;
             padding: 12px;
             position: relative;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            cursor: pointer;
         }
 
         .item-card:hover {
-            border-color: #555;
+            border-color: var(--text-red);
+            box-shadow: 0 0 18px rgba(230, 0, 0, 0.35);
         }
 
         /* TALL SPAN CARD */
@@ -365,6 +422,19 @@
 
 <body>
 
+    <!-- CRT OVERLAY -->
+    <div class="crt-overlay">
+        <div class="crt-scanlines"></div>
+        <canvas class="crt-grain" id="crtGrain"></canvas>
+        <div class="crt-scanners">
+            <span style="--dur:9s;  --del:0s;   --op:0.13;"></span>
+            <span style="--dur:14s; --del:-5s;  --op:0.08;"></span>
+            <span style="--dur:11s; --del:-2s;  --op:0.10;"></span>
+        </div>
+        <div class="crt-glow"></div>
+    </div>
+    <div class="crt-bevel"></div>
+
     <!-- TOP NAVBAR -->
     <div class="navbar">
         <div class="nav-brand">
@@ -391,10 +461,46 @@
         <!-- LEFT FEATURED ITEM DISPLAY -->
         <div class="featured-panel">
             <div class="featured-header">
-                <h1 class="item-title">DEVANSH'S FINGER</h1>
+                <h1 class="item-title">LIGHT SABER</h1>
                 <div class="points-badge">
                     <div class="points-label">Battle points</div>
                     <div class="points-value">23208</div>
+                </div>
+            </div>
+
+            <!-- LIGHTSABER VIDEO + HITBOX -->
+            <div class="saber-display">
+                <div class="saber-media-wrapper">
+                    <!-- Forward video -->
+                    <video
+                        id="saberVideo"
+                        class="saber-video"
+                        src="{{ url_for('static', filename='assets/tracery_1_720p.webm') }}"
+                        preload="auto"
+                        muted
+                        playsinline
+                    ></video>
+                    <!-- Reversed video (pre-rendered), hidden by default -->
+                    <video
+                        id="saberVideoRev"
+                        class="saber-video"
+                        src="{{ url_for('static', filename='assets/tracery_1_720p_rev.webm') }}"
+                        preload="auto"
+                        muted
+                        playsinline
+                        style="display:none;"
+                    ></video>
+                    <!-- Hidden reference image for alpha sampling -->
+                    <img
+                        id="saberHitbox"
+                        class="saber-hitbox"
+                        src="{{ url_for('static', filename='assets/reference mouse.webp') }}"
+                        alt=""
+                        crossorigin="anonymous"
+                        draggable="false"
+                    />
+                    <!-- Canvas: same size as image, invisible, used for pixel-perfect mouse tracking -->
+                    <canvas id="saberCanvas" class="saber-canvas"></canvas>
                 </div>
             </div>
 
@@ -412,23 +518,20 @@
 
                 <div class="action-buttons">
                     <button class="btn btn-rent">Rent</button>
-                    <button class="btn btn-purchase-lg">Purchase</button>
+                    <button class="btn btn-purchase-lg">Apply</button>
                 </div>
             </div>
         </div>
 
         <!-- RIGHT STORE INVENTORY GRID -->
         <div class="store-mesh">
-            <!-- Row 1 & 2 -->
+            <!-- Row 1 -->
             <div class="item-card">
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
             <div class="item-card">
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
-
-            <!-- TALL SPAN CARD -->
-            <div class="item-card span-tall"></div>
 
             <!-- Row 2 -->
             <div class="item-card">
@@ -445,22 +548,149 @@
             <div class="item-card">
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
-            <div class="item-card">
-                <button class="btn-card-buy">PURCHASE</button>
-            </div>
-            <div class="item-card">
-                <button class="btn-card-buy">PURCHASE</button>
-            </div>
 
             <!-- Row 4 -->
-            <div class="item-card"></div>
-            <div class="item-card"></div>
-            <div class="item-card"></div>
-            <div class="item-card"></div>
+            <div class="item-card">
+                <button class="btn-card-buy">PURCHASE</button>
+            </div>
+            <div class="item-card">
+                <button class="btn-card-buy">PURCHASE</button>
+            </div>
         </div>
 
     </div>
 
+    <script>
+    (function () {
+        const hitImg = document.getElementById('saberHitbox');
+        const canvas = document.getElementById('saberCanvas');
+        const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+
+        // ── 1. ALPHA MAP ──────────────────────────────────────────────────────
+        let alphaReady = false;
+        let imgW = 0, imgH = 0;
+
+        // We size the canvas against the forward video element
+        const refEl = document.getElementById('saberVideo');
+
+        function buildAlphaMap() {
+            imgW = hitImg.naturalWidth;
+            imgH = hitImg.naturalHeight;
+            canvas.width  = imgW;
+            canvas.height = imgH;
+            canvas.style.width  = refEl.offsetWidth  + 'px';
+            canvas.style.height = refEl.offsetHeight + 'px';
+            ctx.drawImage(hitImg, 0, 0, imgW, imgH);
+            alphaReady = true;
+        }
+
+        if (hitImg.complete && hitImg.naturalWidth) {
+            buildAlphaMap();
+        } else {
+            hitImg.addEventListener('load', buildAlphaMap);
+        }
+
+        window.addEventListener('resize', () => {
+            if (!alphaReady) return;
+            canvas.style.width  = refEl.offsetWidth  + 'px';
+            canvas.style.height = refEl.offsetHeight + 'px';
+        });
+
+        // ── 2. ALPHA HIT TEST ─────────────────────────────────────────────────
+        const ALPHA_THRESHOLD = 10;
+
+        function isOnSaber(clientX, clientY) {
+            if (!alphaReady) return false;
+            const rect = canvas.getBoundingClientRect();
+            const px = Math.round(((clientX - rect.left) / rect.width)  * imgW);
+            const py = Math.round(((clientY - rect.top)  / rect.height) * imgH);
+            if (px < 0 || py < 0 || px >= imgW || py >= imgH) return false;
+            return ctx.getImageData(px, py, 1, 1).data[3] > ALPHA_THRESHOLD;
+        }
+
+        // ── 3. TWO VIDEOS ─────────────────────────────────────────────────────
+        // vidFwd  — forward video, visible by default
+        // vidRev  — pre-rendered reversed video, shown on mouse leave
+        const vidFwd = document.getElementById('saberVideo');
+        const vidRev = document.getElementById('saberVideoRev');
+
+        function showFwd() {
+            vidFwd.style.display = 'block';
+            vidRev.style.display = 'none';
+        }
+
+        function showRev() {
+            vidFwd.style.display = 'none';
+            vidRev.style.display = 'block';
+        }
+
+        // ── 4. HOVER LOGIC ────────────────────────────────────────────────────
+        let isHovered = false;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const on = isOnSaber(e.clientX, e.clientY);
+            canvas.style.cursor = on ? 'crosshair' : 'default';
+            if (on && !isHovered)  { isHovered = true;  onEnter(); }
+            if (!on && isHovered)  { isHovered = false; onLeave(); }
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            if (isHovered) { isHovered = false; onLeave(); }
+        });
+
+        function onEnter() {
+            // Stop reverse, switch to forward from wherever it currently is
+            vidRev.pause();
+            // Sync forward to mirror position (rev plays 0→end = fwd plays end→0)
+            const revPos = vidRev.currentTime;
+            const dur    = vidFwd.duration || vidRev.duration || 0;
+            vidFwd.currentTime = Math.max(0, dur - revPos);
+            showFwd();
+            if (vidFwd.currentTime < dur - 0.05) {
+                vidFwd.play().catch(() => {});
+            }
+        }
+
+        function onLeave() {
+            // Stop forward, switch to reverse from mirrored position
+            vidFwd.pause();
+            const fwdPos = vidFwd.currentTime;
+            const dur    = vidFwd.duration || vidRev.duration || 0;
+            vidRev.currentTime = Math.max(0, dur - fwdPos);
+            showRev();
+            vidRev.play().catch(() => {});
+        }
+
+        // Hold at last frame when each video ends
+        vidFwd.addEventListener('ended', () => vidFwd.pause());
+        vidRev.addEventListener('ended', () => vidRev.pause());
+
+        // Park both at frame 0 on load
+        vidFwd.addEventListener('loadedmetadata', () => { vidFwd.currentTime = 0; });
+        vidRev.addEventListener('loadedmetadata', () => { vidRev.currentTime = 0; });
+    })();
+    // CRT GRAIN
+    (function(){
+      const c=document.getElementById('crtGrain');
+      if(!c)return;
+      const ctx=c.getContext('2d');
+      function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}
+      resize();
+      window.addEventListener('resize',resize);
+      function grain(){
+        const w=c.width,h=c.height;
+        const img=ctx.createImageData(w,h);
+        const d=img.data;
+        for(let i=0;i<d.length;i+=4){
+          const v=Math.random()*255|0;
+          d[i]=d[i+1]=d[i+2]=v;d[i+3]=18;
+        }
+        ctx.putImageData(img,0,0);
+        requestAnimationFrame(grain);
+      }
+      grain();
+    })();
+    </script>
 </body>
 
 </html>
