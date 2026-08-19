@@ -378,11 +378,57 @@
             color: var(--black);
             font-weight: 800;
             box-shadow: 0 0 12px rgba(230, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
         }
 
         .btn-purchase-lg:hover {
             background: #ff1a1a;
             box-shadow: 0 0 18px var(--red-glow);
+        }
+
+        .btn-purchase-lg.applied {
+            background: #111;
+            color: var(--text-red);
+            border: 1px solid var(--text-red);
+            box-shadow: 0 0 14px rgba(230, 0, 0, 0.4);
+            cursor: default;
+        }
+
+        @keyframes glitch-it {
+            0%   { transform: translate(0);         clip-path: inset(0 0 100% 0); opacity: 1; }
+            10%  { transform: translate(-3px, 1px); clip-path: inset(20% 0 50% 0); }
+            20%  { transform: translate(3px, -1px); clip-path: inset(60% 0 10% 0); }
+            30%  { transform: translate(-2px, 2px); clip-path: inset(10% 0 70% 0); }
+            40%  { transform: translate(2px, -2px); clip-path: inset(80% 0 5%  0); }
+            50%  { transform: translate(-1px, 1px); clip-path: inset(30% 0 40% 0); }
+            60%  { transform: translate(1px, -1px); clip-path: inset(50% 0 20% 0); }
+            70%  { transform: translate(-2px, 0);   clip-path: inset(5%  0 80% 0); }
+            80%  { transform: translate(2px, 1px);  clip-path: inset(70% 0 15% 0); }
+            90%  { transform: translate(0, -1px);   clip-path: inset(15% 0 60% 0); }
+            100% { transform: translate(0);         clip-path: inset(0 0 0 0);     opacity: 1; }
+        }
+
+        .btn-purchase-lg .glitch-layer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            font-size: inherit;
+            font-weight: inherit;
+            letter-spacing: inherit;
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        .btn-purchase-lg.glitching .glitch-layer {
+            animation: glitch-it 0.5s steps(1) forwards;
+            opacity: 1;
+            color: var(--text-red);
+            background: #111;
+            text-shadow: 2px 0 var(--red-glow), -2px 0 #0ff;
         }
 
         /* ==========================================
@@ -404,12 +450,13 @@
             border-radius: 8px;
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
+            justify-content: center;
             align-items: center;
             padding: 12px;
             position: relative;
             transition: border-color 0.2s, box-shadow 0.2s;
             cursor: pointer;
+            gap: 4px;
         }
 
         .item-card:hover {
@@ -437,6 +484,34 @@
 
         .item-card:hover .btn-card-buy {
             color: var(--white);
+        }
+
+        .card-item-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #2a2a2a;
+            text-transform: uppercase;
+            text-align: center;
+            margin-bottom: 4px;
+        }
+
+        .card-item-sub {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            color: #1e1e1e;
+            text-transform: uppercase;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .item-card:hover .card-item-label {
+            color: #444;
+        }
+
+        .item-card:hover .card-item-sub {
+            color: #333;
         }
 
         /* Responsive styling */
@@ -554,42 +629,58 @@
 
                 <div class="action-buttons">
                     <button class="btn btn-rent">Rent</button>
-                    <button class="btn btn-purchase-lg">Apply</button>
+                    <button class="btn btn-purchase-lg" id="btnApply">Apply<span class="glitch-layer">APPLIED</span></button>
                 </div>
             </div>
         </div>
 
         <!-- RIGHT STORE INVENTORY GRID -->
         <div class="store-mesh">
-            <!-- Row 1 -->
-            <div class="item-card">
+            <!-- Row 1 — linked to carousel -->
+            <div class="item-card" data-carousel="0">
+                <div class="card-item-label">Item 01</div>
+                <div class="card-item-sub">// not classified</div>
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
-            <div class="item-card">
-                <button class="btn-card-buy">PURCHASE</button>
-            </div>
-
-            <!-- Row 2 -->
-            <div class="item-card">
-                <button class="btn-card-buy">PURCHASE</button>
-            </div>
-            <div class="item-card">
+            <div class="item-card" data-carousel="1">
+                <div class="card-item-label">Item 02</div>
+                <div class="card-item-sub">// not classified</div>
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
 
-            <!-- Row 3 -->
-            <div class="item-card">
+            <!-- Row 2 — linked to carousel -->
+            <div class="item-card" data-carousel="2">
+                <div class="card-item-label">Item 03</div>
+                <div class="card-item-sub">// not classified</div>
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
-            <div class="item-card">
+            <div class="item-card" data-carousel="3">
+                <div class="card-item-label">Item 04</div>
+                <div class="card-item-sub">// not classified</div>
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
 
-            <!-- Row 4 -->
+            <!-- Row 3 — no carousel link -->
             <div class="item-card">
+                <div class="card-item-label">Item 05</div>
+                <div class="card-item-sub">// not classified</div>
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
             <div class="item-card">
+                <div class="card-item-label">Item 06</div>
+                <div class="card-item-sub">// not classified</div>
+                <button class="btn-card-buy">PURCHASE</button>
+            </div>
+
+            <!-- Row 4 — no carousel link -->
+            <div class="item-card">
+                <div class="card-item-label">Item 07</div>
+                <div class="card-item-sub">// not classified</div>
+                <button class="btn-card-buy">PURCHASE</button>
+            </div>
+            <div class="item-card">
+                <div class="card-item-label">Item 08</div>
+                <div class="card-item-sub">// not classified</div>
                 <button class="btn-card-buy">PURCHASE</button>
             </div>
         </div>
@@ -598,7 +689,7 @@
 
     <script>
     // ── CAROUSEL ──────────────────────────────────────────────────────────────
-    (function () {
+    const Carousel = (function () {
         const items   = Array.from(document.querySelectorAll('.carousel-item'));
         const dots    = Array.from(document.querySelectorAll('.dot'));
         const arrowL  = document.querySelector('.arrow-left');
@@ -650,7 +741,17 @@
                 goTo(i, i > current ? 'right' : 'left');
             });
         });
+
+        return { goTo };
     })();
+
+    // ── CARD → CAROUSEL LINK ─────────────────────────────────────────────────
+    document.querySelector('.store-mesh').addEventListener('click', (e) => {
+        const card = e.target.closest('.item-card[data-carousel]');
+        if (!card) return;
+        const idx = parseInt(card.dataset.carousel, 10);
+        Carousel.goTo(idx, idx > 0 ? 'right' : 'left');
+    });
 
     // ── SABER HOVER ───────────────────────────────────────────────────────────
     (function () {
@@ -728,6 +829,24 @@
         vidRev.addEventListener('ended', () => vidRev.pause());
         vidFwd.addEventListener('loadedmetadata', () => { vidFwd.currentTime = 0; });
         vidRev.addEventListener('loadedmetadata', () => { vidRev.currentTime = 0; });
+    })();
+
+    // ── APPLY BUTTON ──────────────────────────────────────────────────────────
+    (function () {
+        const btn = document.getElementById('btnApply');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            if (btn.classList.contains('applied') || btn.classList.contains('glitching')) return;
+
+            btn.classList.add('glitching');
+
+            // After glitch animation finishes, settle into APPLIED state
+            setTimeout(() => {
+                btn.classList.remove('glitching');
+                btn.classList.add('applied');
+                btn.childNodes[0].textContent = 'APPLIED';
+            }, 520);
+        });
     })();
 
     // ── CRT GRAIN ─────────────────────────────────────────────────────────────
