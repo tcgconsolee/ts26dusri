@@ -25,5 +25,23 @@ def sanitisation():
     return render_template("sanitisation.html")
 
 
+@app.route("/vader")
+def vader():
+    """Lord Vader's WebXR briefing chamber."""
+    return app.send_static_file("vr/index.html")
+
+
+@app.route("/fight")
+def fight():
+    """The confrontation (WebXR duel)."""
+    return app.send_static_file("vr/index.html")
+
+
+@app.route("/travel")
+def travel():
+    """Imperial cartography galaxy map."""
+    return app.send_static_file("vr/galaxy.html")
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=10000)

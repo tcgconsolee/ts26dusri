@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="/static/vr/">
+<title>Imperial Cartography</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="galaxy.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #galaxyWrap { position: fixed; inset: 0; }
+  #galaxyCanvas { width: 100%; height: 100%; display: block; }
+  .gx-back {
+    position: absolute; left: 10px; bottom: 8px; z-index: 8;
+    border: 1px solid #262626; background: rgba(0,0,0,0.78); color: #757575;
+    font: 9px 'JetBrains Mono', monospace; letter-spacing: 1.5px;
+    padding: 8px 10px; text-decoration: none;
+  }
+  .gx-back:hover { color: #ffd307; border-color: #ffd307; }
+</style>
+</head>
+<body>
+
+<div class="admin-display" id="galaxyWrap">
+  <div class="corner-square tl"></div>
+  <div class="corner-square tr"></div>
+  <div class="corner-square bl"></div>
+  <div class="corner-square br"></div>
+
+  <canvas id="galaxyCanvas"></canvas>
+
+  <div class="gx-topbar">
+    <div class="gx-search">
+      <input id="gxSearchInput" type="text" placeholder="SEARCH SYSTEM..." autocomplete="off" spellcheck="false">
+      <ul id="gxSearchList"></ul>
+    </div>
+    <button id="gxReset" title="Return to galactic overview">&#8982; RESET VIEW</button>
+  </div>
+
+  <div id="gxTooltip"></div>
+
+  <div class="planet-panel" id="planetPanel"></div>
+
+  <div class="gx-hud">
+    <div>THE NEW AND IMPROVED GALACTIC EMPIRE</div>
+    <div>HEIL LORD VADER</div>
+    <div id="gxCoords">X +0.0&nbsp;&nbsp;Z +0.0</div>
+  </div>
+
+  <div id="gxLoading">PERHAPS THE ARCHIVES WERE COMPLETE</div>
+
+  <a class="gx-back" href="/vader">&#9668; BRIEFING ROOM</a>
+</div>
+
+<script>
+// page ambience (breath + march); the map itself is untouched
+(function () {
+  const breath = new Audio('vader-breath-one.wav');
+  breath.loop = true; breath.volume = 0.9;
+  const march = new Audio('imperial-march.webm');
+  march.loop = true; march.volume = 0.4;
+  march.addEventListener('error', () => {
+    const alt = new Audio('imperial-march.mp3');
+    alt.loop = true; alt.volume = 0.4;
+    alt.play().catch(() => {});
+  }, { once: true });
+  const start = () => { breath.play().catch(() => {}); march.play().catch(() => {}); };
+  start();
+  window.addEventListener('pointerdown', start);
+  window.addEventListener('keydown', start);
+})();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="galaxy.app.js"></script>
+</body>
+</html>

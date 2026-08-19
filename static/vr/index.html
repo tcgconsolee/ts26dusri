@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="/static/vr/">
+<title>Star Wars Interior — WebXR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #b03030; font: 600 18px system-ui, sans-serif; letter-spacing: 5px;
+    pointer-events: none; text-align: center; line-height: 2;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js",
+    "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js",
+    "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.tsl.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="loading">LORD VADER'S BRIEFING</div>
+<div id="errbox" style="position:fixed;left:8px;bottom:8px;right:8px;z-index:99;color:#ff5147;
+     font:12px monospace;white-space:pre-wrap;pointer-events:none"></div>
+<script>
+  window.__err = (m) => {
+    const b = document.getElementById('errbox');
+    b.textContent = (b.textContent + '\n' + m).slice(-900);
+  };
+  window.addEventListener('error', (e) => __err('ERR: ' + (e.message || e.type) + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno));
+  window.addEventListener('unhandledrejection', (e) => __err('REJ: ' + (e.reason?.message || e.reason)));
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {
+  pass, mrt, output, emissive, uniform, time, hash,
+  positionWorld, positionLocal, positionViewDirection, normalView,
+  vec2, vec3, float, fract, pow, abs, dot, sin, cos, clamp, smoothstep,
+  instancedArray, instanceIndex, uv, atan, length, max, distance
+} from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+const HOLO_POS = new THREE.Vector3(0, 1.6, -8);
+const BOOT_WORLD =
+  (location.pathname.replace(/\/+$/, '').endsWith('/fight') ||
+   new URLSearchParams(location.search).get('world') === 'fight') ? 'fight' : 'room';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030305);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 2000);
+camera.position.set(0, 1.6, 0);
+scene.add(camera);
+
+const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+await renderer.init();
+
+// True XR head pose (the app-level camera is not synced to the headset here).
+function headObj() {
+  return renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+}
+
+const breathingLights = [];
+if (BOOT_WORLD === 'room') {
+  // image-based ambient belongs to the briefing room only; the confrontation
+  // gets no smooth studio fill
+  try {
+    scene.environment = new THREE.PMREMGenerator(renderer)
+      .fromScene(new RoomEnvironment()).texture;
+  } catch (e) {
+    console.warn('PMREM environment failed, falling back to analytic lights', e);
+    const hemi = new THREE.HemisphereLight(0xd8d4cc, 0x3a2f28, 1.2);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    sun.position.set(3, 10, 4);
+    for (const L of [hemi, sun]) {
+      L.userData.base = L.intensity;
+      breathingLights.push(L);
+      scene.add(L);
+    }
+  }
+}
+
+const PP = THREE.RenderPipeline ?? THREE.PostProcessing;
+const postProcessing = new PP(renderer);
+const scenePass = pass(scene, camera);
+scenePass.setMRT(mrt({ output, emissive }));
+const bloomPass = bloom(scenePass.getTextureNode('emissive'), 0.8, 0.4);
+postProcessing.outputNode = scenePass.getTextureNode('output').add(bloomPass);
+
+// ---- Hologram material ----
+const holoBreath = uniform(1);
+const holoMat = new THREE.MeshStandardNodeMaterial({
+  transparent: true, side: THREE.DoubleSide, depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+{
+  const holoColor = vec3(0.08, 0.62, 1.0);
+  const stripes = pow(fract(positionWorld.y.mul(8.0).sub(time.mul(0.45))), 3.0);
+  const fres = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
+  const flicker = sin(time.mul(23.0)).mul(0.04).add(sin(time.mul(7.3)).mul(0.06)).add(1.0);
+  const glow = stripes.mul(0.9).add(fres.mul(1.25)).add(0.15);
+  holoMat.colorNode = vec3(0.0);
+  holoMat.emissiveNode = holoColor.mul(glow).mul(flicker).mul(holoBreath).mul(2.0);
+  holoMat.opacityNode = clamp(stripes.mul(0.35).add(fres.mul(0.9)).add(0.08), 0.0, 1.0);
+  const burst = smoothstep(0.97, 1.0, sin(time.mul(1.7)).mul(0.5).add(0.5));
+  const jitter = hash(positionLocal.y.mul(37.0).add(time.mul(9.0))).sub(0.5).mul(0.1).mul(burst);
+  holoMat.positionNode = positionLocal.add(vec3(jitter, 0.0, jitter));
+}
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(HOLO_POS).setY(1.0);
+controls.update();
+
+// ---- Audio ----
+const BREATH_FILE = 'vader-breath-one.wav';
+const BREATH_GAP = 2.5;
+const BREATH_CYCLE = 5.3;
+const INHALE = [0.10, 1.9], EXHALE = [2.70, 1.9];
+const bump = (p, start, len) => {
+  const u = (p - start) / len;
+  return (u > 0 && u < 1) ? 0.5 - 0.5 * Math.cos(2 * Math.PI * u) : 0;
+};
+const breathEnv = (p) => Math.max(bump(p, ...INHALE), 0.95 * bump(p, ...EXHALE));
+
+const MUSIC_CANDIDATES = ['imperial-march.mp3', 'imperial-march.webm',
+                          'imperial-march.m4a', 'imperial-march.ogg', 'imperial-march.wav'];
+const MUSIC_VOL = 0.52, MUSIC_FADE = 4;
+let musicEl = null;
+
+function startMusic() {
+  if (musicEl) { musicEl.play().catch(() => {}); return; }
+  let i = 0;
+  const tryNext = () => {
+    if (i >= MUSIC_CANDIDATES.length) { musicEl = null; return; }
+    musicEl = new Audio(encodeURIComponent(MUSIC_CANDIDATES[i++]));
+    musicEl.loop = true;
+    musicEl.volume = 0;
+    musicEl.addEventListener('error', tryNext, { once: true });
+    musicEl.play().catch(() => {});
+  };
+  tryNext();
+}
+
+const VOICE_FILE = 'Palpu2.m4a';
+const VOICE_COOLDOWN = 45, VOICE_RADIUS = 4.5;
+let voiceBuffer = null, voiceGain = null, voiceIn = null, voicePlaying = false, lastVoiceAt = -1e9;
+let introVoiceAt = null, wasInsideVoice = false;
+
+function buildVoiceChain() {
+  const p1 = audioCtx.createBiquadFilter();
+  p1.type = 'peaking'; p1.frequency.value = 250; p1.gain.value = 5; p1.Q.value = 0.8;
+  const p2 = audioCtx.createBiquadFilter();
+  p2.type = 'peaking'; p2.frequency.value = 1300; p2.gain.value = 3; p2.Q.value = 1.2;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 3400;
+  const sh = audioCtx.createWaveShaper();
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) {
+    const x = (i / 1023) * 2 - 1;
+    curve[i] = Math.tanh(1.8 * x) / Math.tanh(1.8);
+  }
+  sh.curve = curve; sh.oversample = '2x';
+  const mixG = audioCtx.createGain();
+  const delay = audioCtx.createDelay(0.05); delay.delayTime.value = 0.011;
+  const fb = audioCtx.createGain(); fb.gain.value = 0.28;
+  const wet = audioCtx.createGain(); wet.gain.value = 0.35;
+  p1.connect(p2); p2.connect(lp); lp.connect(sh);
+  sh.connect(mixG);
+  sh.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(mixG);
+  mixG.connect(voiceGain);
+  return p1;
+}
+
+const BREATH_REF = 0.15;
+let audioCtx = null, breathEl = null, breathGain = null;
+let analyser = null, analyserBuf = null, breathLevel = 0;
+let synthT0 = null;
+let breathStarted = false;
+let humGain = null, humOsc = [], clashBuf = null;
+
+function startSynthBreath() {
+  const sr = audioCtx.sampleRate;
+  const off = new OfflineAudioContext(2, Math.round(sr * (BREATH_CYCLE + BREATH_GAP)), sr);
+  const noiseBuf = off.createBuffer(1, off.length, sr);
+  const ch = noiseBuf.getChannelData(0);
+  let seed = 1;
+  for (let i = 0; i < ch.length; i++) {
+    seed = (seed * 16807) % 2147483647;
+    ch[i] = (seed / 2147483647) * 2 - 1;
+  }
+  const phase = (start, len, freq0, freq1, gainMax, Q) => {
+    const src = off.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = off.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = Q;
+    const lp = off.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+    const g = off.createGain(); g.gain.value = 0;
+    const N = 512, env = new Float32Array(N), fr = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const u = i / (N - 1);
+      env[i] = gainMax * (0.5 - 0.5 * Math.cos(2 * Math.PI * u));
+      fr[i] = freq0 + (freq1 - freq0) * u;
+    }
+    g.gain.setValueCurveAtTime(env, start, len);
+    bp.frequency.setValueCurveAtTime(fr, start, len);
+    src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(off.destination);
+    src.start(0);
+  };
+  const click = (at) => {
+    const src = off.createBufferSource(); src.buffer = noiseBuf;
+    const hp = off.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
+    const g = off.createGain(); g.gain.value = 0;
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(0.45, at + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
+    src.connect(hp); hp.connect(g); g.connect(off.destination);
+    src.start(at); src.stop(at + 0.08);
+  };
+  phase(...INHALE, 480, 1050, 0.5, 0.9);
+  phase(...EXHALE, 650, 260, 0.65, 0.7);
+  click(INHALE[0]); click(EXHALE[0]);
+  off.startRendering().then((rendered) => {
+    const src = audioCtx.createBufferSource();
+    src.buffer = rendered; src.loop = true;
+    src.connect(breathGain);
+    src.start();
+    synthT0 = audioCtx.currentTime;
+  });
+}
+
+async function startAudio() {
+  startMusic();
+  if (audioCtx) {
+    audioCtx.resume?.();
+    breathEl?.play?.().catch(() => {});
+    return;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  breathGain = audioCtx.createGain();
+  breathGain.gain.value = 0.9;
+  breathGain.connect(audioCtx.destination);
+
+  breathEl = new Audio(encodeURIComponent(BREATH_FILE));
+  breathEl.loop = true;
+  breathEl.addEventListener('playing', () => { breathStarted = true; });
+  breathEl.addEventListener('error', () => {
+    console.warn('breath file failed, using synthesized loop');
+    analyser = null;
+    startSynthBreath();
+  });
+  const src = audioCtx.createMediaElementSource(breathEl);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyserBuf = new Float32Array(analyser.fftSize);
+  src.connect(analyser);
+  src.connect(breathGain);
+  try {
+    await breathEl.play();
+  } catch (e) { /* autoplay blocked: retried on first input */ }
+
+  // saber hum + clash burst (synthesized)
+  humGain = audioCtx.createGain();
+  humGain.gain.value = 0;
+  const humLp = audioCtx.createBiquadFilter();
+  humLp.type = 'lowpass'; humLp.frequency.value = 420;
+  humGain.connect(humLp); humLp.connect(audioCtx.destination);
+  for (const f of [88, 91]) {
+    const o = audioCtx.createOscillator();
+    o.type = 'sawtooth'; o.frequency.value = f;
+    o.connect(humGain); o.start();
+    humOsc.push(o);
+  }
+  {
+    const sr = audioCtx.sampleRate, len = Math.round(sr * 0.14);
+    const b = audioCtx.createBuffer(1, len, sr);
+    const ch = b.getChannelData(0);
+    let s = 7;
+    for (let i = 0; i < len; i++) {
+      s = (s * 16807) % 2147483647;
+      const t = i / len;
+      ch[i] = ((s / 2147483647) * 2 - 1) * Math.exp(-t * 22) + Math.sin(i / sr * 2 * Math.PI * 78) * 0.5 * Math.exp(-t * 14);
+    }
+    clashBuf = b;
+  }
+
+  voiceGain = audioCtx.createGain();
+  voiceGain.gain.value = 3.0;
+  const comp = audioCtx.createDynamicsCompressor();
+  const panner = audioCtx.createPanner();
+  panner.panningModel = 'HRTF';
+  panner.distanceModel = 'inverse';
+  panner.refDistance = 3;
+  panner.rolloffFactor = 0.5;
+  panner.setPosition(HOLO_POS.x, HOLO_POS.y, HOLO_POS.z);
+  voiceGain.connect(comp);
+  comp.connect(panner);
+  panner.connect(audioCtx.destination);
+  voiceIn = buildVoiceChain();
+  try {
+    const r = await fetch(encodeURIComponent(VOICE_FILE));
+    voiceBuffer = await audioCtx.decodeAudioData(await r.arrayBuffer());
+    if (introVoiceAt === null && BOOT_WORLD === 'room') introVoiceAt = clock.elapsedTime + 8;
+  } catch (e) {
+    console.warn('voiceover missing', e);
+  }
+}
+startAudio();
+window.addEventListener('pointerdown', startAudio);
+renderer.xr.addEventListener?.('sessionstart', startAudio);
+renderer.xr.addEventListener?.('sessionend', () => { baseRefSpace = null; wasInsidePush = false; });
+
+function playClash(strength) {
+  if (!audioCtx || !clashBuf) return;
+  const s = audioCtx.createBufferSource();
+  s.buffer = clashBuf;
+  s.playbackRate.value = 0.85 + Math.random() * 0.35;
+  const g = audioCtx.createGain();
+  g.gain.value = Math.min(0.6, 0.2 + strength * 0.12);
+  s.connect(g); g.connect(audioCtx.destination);
+  s.start();
+}
+
+function tryVoice() {
+  if (!audioCtx || !voiceBuffer || voicePlaying) return;
+  if (clock.elapsedTime - lastVoiceAt < VOICE_COOLDOWN) return;
+  voicePlaying = true;
+  lastVoiceAt = clock.elapsedTime;
+  const s = audioCtx.createBufferSource();
+  s.buffer = voiceBuffer;
+  s.playbackRate.value = 0.9;
+  s.connect(voiceIn ?? voiceGain);
+  const t = audioCtx.currentTime;
+  breathGain.gain.cancelScheduledValues(t);
+  breathGain.gain.setTargetAtTime(0.25, t, 0.3);
+  s.onended = () => {
+    voicePlaying = false;
+    breathGain.gain.setTargetAtTime(0.9, audioCtx.currentTime, 0.6);
+    if (!buttonsEnabled) enableButtons();
+  };
+  s.start(t, 2.0);   // skip the first two seconds of the recording
+}
+
+function breathFromAnalyser(dt) {
+  let rms = 0;
+  if (breathEl && !breathEl.paused) {
+    analyser.getFloatTimeDomainData(analyserBuf);
+    let sum = 0;
+    for (let i = 0; i < analyserBuf.length; i++) { const v = analyserBuf[i]; sum += v * v; }
+    rms = Math.sqrt(sum / analyserBuf.length);
+  }
+  const norm = Math.min(1, rms / BREATH_REF);
+  const target = norm < 0.02 ? 0 : Math.pow(norm, 0.7);
+  const rate = target > breathLevel ? 7 : 5;
+  breathLevel += (target - breathLevel) * Math.min(1, rate * dt);
+  return breathLevel;
+}
+
+// ---- Night sky over the confrontation: the galaxy (map parameters) + stars ----
+const skyGroup = new THREE.Group();
+skyGroup.visible = false;
+scene.add(skyGroup);
+const uSkyTime = uniform(500);
+{
+  const n = 2200;
+  const pos = new Float32Array(n * 3);
+  const sc = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = 420 + Math.random() * 380;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+    pos[i * 3 + 1] = Math.abs(r * Math.cos(ph)) * 0.6 + 15;   // keep stars above the horizon
+    pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+    sc[i] = 0.3 + Math.random() * 0.7;
+  }
+  const aPos = instancedArray(pos, 'vec3');
+  const aSc = instancedArray(sc, 'float');
+  const m = new THREE.SpriteNodeMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const s = aSc.element(instanceIndex);
+  m.positionNode = aPos.element(instanceIndex);
+  m.scaleNode = s.mul(1.6).add(1.0).mul(0.55);
+  const d = distance(uv(), vec2(0.5));
+  m.opacityNode = smoothstep(0.5, 0.15, d).mul(s.mul(0.32).add(0.16));
+  m.colorNode = vec3(0.75, 0.82, 0.95);
+  const stars = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), m, n);
+  stars.frustumCulled = false;
+  skyGroup.add(stars);
+}
+{
+  const count = 200000, radius = 74, branches = 3;
+  const randomness = 0.5, randomnessPower = 3;
+  const inC = new THREE.Color('#f0b466');
+  const outC = new THREE.Color('#872f21');
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sc = new Float32Array(count);
+  const rnd = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const i3 = i * 3;
+    const r = Math.random() * radius;
+    const branchAngle = (i % branches) / branches * Math.PI * 2;
+    pos[i3] = Math.cos(branchAngle) * r;
+    pos[i3 + 1] = 0;
+    pos[i3 + 2] = Math.sin(branchAngle) * r;
+    const rx = Math.pow(Math.random(), randomnessPower) * (Math.random() < .5 ? 1 : -1) * randomness * r;
+    const rz = Math.pow(Math.random(), randomnessPower) * (Math.random() < .5 ? 1 : -1) * randomness * r;
+    const bulge = 0.32 + 1.15 * Math.exp(-r / 10);
+    const ry = Math.pow(Math.random(), randomnessPower) * (Math.random() < .5 ? 1 : -1) * randomness * r * 0.5 * bulge;
+    rnd[i3] = rx; rnd[i3 + 1] = ry; rnd[i3 + 2] = rz;
+    const c = inC.clone().lerp(outC, r / radius);
+    col[i3] = c.r; col[i3 + 1] = c.g; col[i3 + 2] = c.b;
+    sc[i] = Math.random();
+  }
+  const aPos = instancedArray(pos, 'vec3');
+  const aRnd = instancedArray(rnd, 'vec3');
+  const aCol = instancedArray(col, 'vec3');
+  const aSc = instancedArray(sc, 'float');
+  const m = new THREE.SpriteNodeMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const p = aPos.element(instanceIndex);
+  const dxz = length(p.xz);
+  const angle = atan(p.z, p.x).add(float(1.0).div(max(dxz, 1.0)).mul(uSkyTime));
+  m.positionNode = vec3(cos(angle).mul(dxz), p.y, sin(angle).mul(dxz)).add(aRnd.element(instanceIndex));
+  m.scaleNode = aSc.element(instanceIndex).mul(0.75).add(0.25).mul(2.19);
+  const dC = distance(uv(), vec2(0.5));
+  const glow = pow(float(1.0).sub(dC), 8.0).mul(0.85);
+  m.colorNode = aCol.element(instanceIndex).mul(glow);
+  m.opacityNode = glow;
+  const pts = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), m, count);
+  pts.frustumCulled = false;
+  const spiral = new THREE.Group();
+  spiral.add(pts);
+  spiral.position.set(0, 300, -80);
+  spiral.rotation.x = 0.62;
+  spiral.scale.setScalar(2.4);
+  skyGroup.add(spiral);
+  skyGroup.userData.spiral = spiral;
+}
+
+// ---- Worlds ----
+const pulsing = [];
+let roomRoot = null;
+let fightRoot = null, fightFloorY = 0, fightMixer = null, fightLoading = null;
+let worldMode = BOOT_WORLD;
+const loading = document.getElementById('loading');
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+if (BOOT_WORLD === 'room') loader.load(
+  'interior1-quest.glb',
+  (gltf) => {
+    gltf.scene.position.set(0, 0, HOLO_POS.z);
+    const seen = new Set();
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m || seen.has(m)) continue;
+        seen.add(m);
+        if (m.name === 'Procedural emissive wireframe') {
+          o.material = holoMat;
+          o.renderOrder = 1;
+        } else if (m.emissiveMap || (m.emissive && m.emissive.getHex() !== 0)) {
+          m.emissive.setRGB(1.0, 0.09, 0.07);
+          pulsing.push({ material: m, base: m.emissiveIntensity });
+        }
+      }
+    });
+    roomRoot = gltf.scene;
+    roomRoot.visible = worldMode === 'room';
+    scene.add(roomRoot);
+    if (worldMode === 'room') {
+      uiAnchor.visible = true;
+      loading.remove();
+    }
+  },
+  undefined,
+  (err) => { loading.textContent = 'BRIEFING UNAVAILABLE'; console.error(err); }
+);
+
+function loadFight() {
+  if (fightLoading) return fightLoading;
+  fightLoading = new Promise((resolve) => {
+    loader.load(
+      'fight-quest.glb',
+      (g) => {
+        // as-authored geometry/materials; lit by one elongated soft light
+        // hanging over the structure (no smooth ambient fill)
+        fightRoot = g.scene;
+        fightFloorY = 0;
+        THREE.RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init());
+        const strip = new THREE.RectAreaLight(0xffe7c4, 6, 6, 1.6);
+        strip.position.set(0, 4.2, -2.2);   // above the farm cluster, spanning it
+        strip.lookAt(0, 0, -2.2);
+        fightRoot.add(strip);
+        fightRoot.visible = worldMode === 'fight';
+        scene.add(fightRoot);
+        if (g.animations.length) {
+          fightMixer = new THREE.AnimationMixer(fightRoot);
+          for (const clip of g.animations) fightMixer.clipAction(clip).play();
+        }
+        resolve();
+      },
+      undefined,
+      (err) => {
+        console.error('fight scene failed', err);
+        window.__err?.('FIGHT GLB FAILED: ' + (err?.message || err));
+        resolve();
+      }
+    );
+  });
+  return fightLoading;
+}
+
+if (BOOT_WORLD === 'fight') {
+  loading.textContent = 'THE CONFRONTATION';
+  loadFight().then(() => {
+    if (loading.isConnected) loading.remove();
+    enterFight();
+  });
+}
+
+// ---- Locomotion ----
+const DEADZONE = 0.15;
+const UP = new THREE.Vector3(0, 1, 0);
+const rigPos = new THREE.Vector3();
+let rigDirty = false, baseRefSpace = null;
+const _fwd = new THREE.Vector3(), _right = new THREE.Vector3();
+const _camPos = new THREE.Vector3();
+
+function applyRig() {
+  if (!baseRefSpace) return;
+  renderer.xr.setReferenceSpace(baseRefSpace.getOffsetReferenceSpace(
+    new XRRigidTransform({ x: -rigPos.x, y: -rigPos.y, z: -rigPos.z, w: 1 })
+  ));
+}
+
+function handleInput(dt) {
+  const session = renderer.xr.getSession();
+  if (!session || duel.dead) return;
+  const speed = worldMode === 'room' ? 2.5 : 3;
+  for (const source of session.inputSources) {
+    const gp = source.gamepad;
+    if (!gp || gp.axes.length < 4) continue;
+    const x = gp.axes[2], y = gp.axes[3];
+    const mx = Math.abs(x) > DEADZONE ? x : 0;
+    const my = Math.abs(y) > DEADZONE ? y : 0;
+    if (mx || my) {
+      headObj().getWorldDirection(_fwd); _fwd.y = 0; _fwd.normalize();
+      _right.crossVectors(_fwd, UP);
+      rigPos.addScaledVector(_fwd, -my * speed * dt);
+      rigPos.addScaledVector(_right, mx * speed * dt);
+      rigDirty = true;
+    }
+  }
+}
+
+// ---- Force push (room only) ----
+const PUSH_RADIUS = 3.0;
+const pushVel = new THREE.Vector3();
+let wasInsidePush = false;
+
+function rumble(strength = 1.0, ms = 300, hand = null) {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+  for (const source of session.inputSources) {
+    if (hand && source.handedness !== hand) continue;
+    source.gamepad?.hapticActuators?.[0]?.pulse?.(strength, ms);
+  }
+}
+
+function updateForcePush(dt) {
+  if (!renderer.xr.isPresenting || worldMode !== 'room') { wasInsidePush = false; return; }
+  headObj().getWorldPosition(_camPos);
+  const dx = _camPos.x - HOLO_POS.x, dz = _camPos.z - HOLO_POS.z;
+  const dist = Math.hypot(dx, dz) || 1e-6;
+  const nx = dx / dist, nz = dz / dist;
+  const insidePush = dist < PUSH_RADIUS;
+  if (insidePush) {
+    if (!wasInsidePush) {
+      pushVel.x += nx * 22; pushVel.z += nz * 22;
+      rumble();
+      tryVoice();
+    }
+    rigPos.x += nx * 3.0 * dt;
+    rigPos.z += nz * 3.0 * dt;
+    rigDirty = true;
+  }
+  wasInsidePush = insidePush;
+  if (pushVel.lengthSq() > 1e-4) {
+    rigPos.addScaledVector(pushVel, dt);
+    pushVel.multiplyScalar(Math.exp(-2.2 * dt));
+    rigDirty = true;
+  }
+  const over = dist - 9.6;
+  if (over > 0) {
+    rigPos.x -= nx * over;
+    rigPos.z -= nz * over;
+    pushVel.set(0, 0, 0);
+    rigDirty = true;
+  }
+}
+
+// ---- UI: circular white buttons ----
+const uiAnchor = new THREE.Group();
+uiAnchor.visible = false;
+scene.add(uiAnchor);
+
+function makeButton(label) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 256;
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  g.fillStyle = 'rgba(8, 8, 10, 0.92)';
+  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#ffffff'; g.lineWidth = 8;
+  g.beginPath(); g.arc(128, 128, 114, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 40px system-ui, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(label, 128, 130);
+  return new THREE.Mesh(
+    new THREE.CircleGeometry(0.16, 48),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(cv), transparent: true, color: 0x555555
+    })
+  );
+}
+const playbackBtn = makeButton('PLAY');
+const travelBtn = makeButton('TRAVEL');
+playbackBtn.position.set(-0.45, 1.25, -2.0);
+travelBtn.position.set(0.45, 1.25, -2.0);
+uiAnchor.add(playbackBtn, travelBtn);
+
+let buttonsEnabled = false;
+function enableButtons() {
+  buttonsEnabled = true;
+  playbackBtn.material.color.set(0xffffff);
+  travelBtn.material.color.set(0xffffff);
+}
+
+// screen fade (head-centered shell: works inside XR)
+const fadeMat = new THREE.MeshBasicMaterial({
+  color: 0x000000, side: THREE.BackSide, transparent: true, opacity: 0,
+  depthTest: false, depthWrite: false
+});
+const fadeSphere = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), fadeMat);
+fadeSphere.renderOrder = 999;
+fadeSphere.visible = false;
+scene.add(fadeSphere);
+let travel = null;   // { fn, phase: 'out' | 'in', k }
+
+function fadeAction(fn) {
+  if (travel) return;
+  travel = { fn, phase: 'out', k: 0 };
+  fadeSphere.visible = true;
+}
+
+// red hurt flash
+const hurtMat = fadeMat.clone();
+hurtMat.color = new THREE.Color(0x550000);
+const hurtSphere = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), hurtMat);
+hurtSphere.renderOrder = 998;
+hurtSphere.visible = false;
+scene.add(hurtSphere);
+let hurtT = 0;
+
+function pressButton(mesh) {
+  if (!buttonsEnabled) return;
+  if (mesh === playbackBtn) { lastVoiceAt = -1e9; tryVoice(); }
+  else if (mesh === travelBtn) fadeAction(() => { location.href = '/travel'; });
+}
+
+// ==== LIGHTSABER DUEL ====
+const BLADE_LEN = 1.05, BLADE_EMIT = 0.12, BLADE_R = 0.045;
+const duel = {
+  active: false, dead: false,
+  playerHP: 100, squareHP: 100,
+  iFrameUntil: -1e9, squareHitCd: -1e9, squareDownUntil: -1e9,
+};
+
+function makeSaber(colorHex) {
+  const root = new THREE.Group();
+  const hilt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022, 0.026, 0.24, 12),
+    new THREE.MeshStandardMaterial({ color: 0x9a9aa4, metalness: 0.9, roughness: 0.35 })
+  );
+  hilt.rotation.x = Math.PI / 2;
+  root.add(hilt);
+  const c = new THREE.Color(colorHex);
+  const bladeMat = new THREE.MeshStandardNodeMaterial();
+  bladeMat.colorNode = vec3(0.02, 0.02, 0.02);
+  // hot core but restrained: keeps the blade vivid without washing the
+  // surroundings in bloom
+  bladeMat.emissiveNode = vec3(c.r, c.g, c.b).mul(1.15).add(vec3(0.16));
+  const blade = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.02, BLADE_LEN - 0.04, 4, 8),
+    bladeMat
+  );
+  blade.rotation.x = Math.PI / 2;
+  blade.position.z = -(BLADE_EMIT + BLADE_LEN / 2);
+  root.add(blade);
+  root.visible = false;
+  scene.add(root);
+  return root;
+}
+
+const pSaber = {
+  root: makeSaber(0xff2213),
+  virtQuat: new THREE.Quaternion(), haveVirt: false,
+  prevBase: new THREE.Vector3(), prevTip: new THREE.Vector3(),
+  tipVel: new THREE.Vector3(), contact: false, havePrev: false,
+};
+const eSaber = {
+  root: makeSaber(0x2a7fff),
+  base: new THREE.Vector3(), tip: new THREE.Vector3(),
+  prevBase: new THREE.Vector3(), prevTip: new THREE.Vector3(), havePrev: false,
+};
+
+// the square: image-faced dueling construct, a real box with volume
+const squareGroup = new THREE.Group();
+const SQ_HALF = new THREE.Vector3(0.275, 0.275, 0.09);
+const squareMats = [];
+{
+  const tex = new THREE.TextureLoader().load('square.png');
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // opaque everywhere: transparency on box faces causes seam/gap artifacts
+  const faceMat = new THREE.MeshBasicMaterial({ map: tex });
+  const sideMat = new THREE.MeshStandardMaterial({
+    color: 0x14161c, metalness: 0.8, roughness: 0.4
+  });
+  // box material order: +x,-x,+y,-y,+z(front),-z(back)
+  const mats = [sideMat, sideMat, sideMat, sideMat, faceMat, faceMat];
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(SQ_HALF.x * 2, SQ_HALF.y * 2, SQ_HALF.z * 2), mats
+  );
+  squareGroup.add(box);
+  squareMats.push(faceMat, sideMat);
+}
+const squareBar = {};
+{
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 32;
+  squareBar.ctx = cv.getContext('2d');
+  squareBar.tex = new THREE.CanvasTexture(cv);
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.5, 0.06),
+    new THREE.MeshBasicMaterial({ map: squareBar.tex, transparent: true, side: THREE.DoubleSide })
+  );
+  m.position.y = 0.42;
+  squareGroup.add(m);
+  squareBar.mesh = m;
+}
+squareGroup.visible = false;
+scene.add(squareGroup);
+
+function drawSquareBar() {
+  const g = squareBar.ctx;
+  g.clearRect(0, 0, 256, 32);
+  g.fillStyle = 'rgba(0,0,0,0.7)'; g.fillRect(0, 0, 256, 32);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 3; g.strokeRect(1, 1, 254, 30);
+  g.fillStyle = '#ff2213';
+  g.fillRect(4, 4, 248 * Math.max(0, duel.squareHP) / 100, 24);
+  squareBar.tex.needsUpdate = true;
+}
+
+// player health bar, worn on the off hand
+const healthBar = {};
+{
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  healthBar.ctx = cv.getContext('2d');
+  healthBar.tex = new THREE.CanvasTexture(cv);
+  healthBar.mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.13, 0.032),
+    new THREE.MeshBasicMaterial({ map: healthBar.tex, transparent: true })
+  );
+  healthBar.mesh.visible = false;
+  scene.add(healthBar.mesh);
+}
+function drawHealth() {
+  const g = healthBar.ctx;
+  g.clearRect(0, 0, 256, 64);
+  g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillRect(0, 0, 256, 64);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 4; g.strokeRect(2, 2, 252, 60);
+  const hp = Math.max(0, duel.playerHP);
+  g.fillStyle = hp > 40 ? '#2a7fff' : '#ff2213';
+  g.fillRect(8, 8, 240 * hp / 100, 32);
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 20px system-ui, sans-serif';
+  g.fillText(`${Math.ceil(hp)}`, 10, 58);
+  healthBar.tex.needsUpdate = true;
+}
+drawHealth();
+drawSquareBar();
+
+// death screen
+const deathPanel = {};
+{
+  const cv = document.createElement('canvas');
+  cv.width = 768; cv.height = 384;
+  deathPanel.ctx = cv.getContext('2d');
+  deathPanel.tex = new THREE.CanvasTexture(cv);
+  deathPanel.mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.96, 0.48),
+    new THREE.MeshBasicMaterial({ map: deathPanel.tex, transparent: true })
+  );
+  deathPanel.mesh.visible = false;
+  deathPanel.mesh.renderOrder = 1000;
+  deathPanel.mesh.material.depthTest = false;
+  scene.add(deathPanel.mesh);
+  const g = deathPanel.ctx;
+  g.fillStyle = 'rgba(4,2,2,0.93)'; g.fillRect(0, 0, 768, 384);
+  g.strokeStyle = '#ff2213'; g.lineWidth = 4; g.strokeRect(2, 2, 764, 380);
+  g.fillStyle = '#ff2213';
+  g.font = 'bold 54px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.fillText('YOU HAVE FAILED ME', 384, 120);
+  g.fillText('INQUISITOR', 384, 190);
+  const btn = (x, label) => {
+    g.strokeStyle = '#ffffff'; g.lineWidth = 3;
+    g.strokeRect(x, 268, 240, 76);
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 40px system-ui, sans-serif';
+    g.fillText(label, x + 120, 320);
+  };
+  btn(90, 'EXIT');
+  btn(438, 'RETRY');
+  deathPanel.tex.needsUpdate = true;
+}
+const deathHit = (uvHit) => {
+  const x = uvHit.x * 768, y = (1 - uvHit.y) * 384;
+  if (y >= 268 && y <= 344) {
+    if (x >= 90 && x <= 330) return 'exit';
+    if (x >= 438 && x <= 678) return 'retry';
+  }
+  return null;
+};
+
+// controllers + grips
+const _raycaster = new THREE.Raycaster();
+const _tmpMat = new THREE.Matrix4();
+const controllers = [], grips = [];
+for (const i of [0, 1]) {
+  const c = renderer.xr.getController(i);
+  c.addEventListener('connected', (e) => { c.userData.handedness = e.data?.handedness; });
+  c.addEventListener('select', () => onSelect(c));
+  const ray = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -4)]),
+    new THREE.LineBasicMaterial({ color: 0xffd307, transparent: true, opacity: 0.4 })
+  );
+  c.add(ray);
+  c.userData.laser = ray;
+  scene.add(c);
+  controllers.push(c);
+  const gr = renderer.xr.getControllerGrip(i);
+  gr.addEventListener('connected', (e) => { gr.userData.handedness = e.data?.handedness; });
+  scene.add(gr);
+  grips.push(gr);
+}
+const gripFor = (hand, fallbackIdx) =>
+  grips.find(g => g.userData.handedness === hand) ?? grips[fallbackIdx];
+
+function onSelect(c) {
+  _tmpMat.identity().extractRotation(c.matrixWorld);
+  _raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+  _raycaster.ray.direction.set(0, 0, -1).applyMatrix4(_tmpMat);
+  handlePress();
+}
+
+function handlePress() {
+  if (deathPanel.mesh.visible) {
+    const h = _raycaster.intersectObject(deathPanel.mesh, false)[0];
+    if (h?.uv) {
+      const act = deathHit(h.uv);
+      if (act === 'exit') fadeAction(() => { location.href = '/travel'; });
+      else if (act === 'retry') fadeAction(resetDuel);
+    }
+    return;
+  }
+  if (!uiAnchor.visible) return;
+  const btnHit = _raycaster.intersectObjects([playbackBtn, travelBtn], false)[0];
+  if (btnHit) pressButton(btnHit.object);
+}
+
+let downX = 0, downY = 0;
+addEventListener('pointerdown', (e) => { downX = e.clientX; downY = e.clientY; });
+addEventListener('pointerup', (e) => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
+  const ndc = new THREE.Vector2(
+    (e.clientX / innerWidth) * 2 - 1,
+    -(e.clientY / innerHeight) * 2 + 1
+  );
+  _raycaster.setFromCamera(ndc, camera);
+  handlePress();
+});
+
+// segment-segment closest points (Ericson); returns squared distance
+const _d1 = new THREE.Vector3(), _d2 = new THREE.Vector3(), _r = new THREE.Vector3();
+const _cA = new THREE.Vector3(), _cB = new THREE.Vector3();
+function segSeg(p1, q1, p2, q2, outA, outB) {
+  _d1.subVectors(q1, p1); _d2.subVectors(q2, p2); _r.subVectors(p1, p2);
+  const a = _d1.lengthSq(), e = _d2.lengthSq(), f = _d2.dot(_r);
+  let s, t;
+  if (a <= 1e-9 && e <= 1e-9) { s = 0; t = 0; }
+  else if (a <= 1e-9) { s = 0; t = Math.min(1, Math.max(0, f / e)); }
+  else {
+    const c = _d1.dot(_r);
+    if (e <= 1e-9) { t = 0; s = Math.min(1, Math.max(0, -c / a)); }
+    else {
+      const b = _d1.dot(_d2), den = a * e - b * b;
+      s = den > 1e-9 ? Math.min(1, Math.max(0, (b * f - c * e) / den)) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = Math.min(1, Math.max(0, -c / a)); }
+      else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, (b - c) / a)); }
+    }
+  }
+  outA.copy(p1).addScaledVector(_d1, s);
+  outB.copy(p2).addScaledVector(_d2, t);
+  return outA.distanceToSquared(outB);
+}
+function segPoint(p, q, x, out) {
+  _d1.subVectors(q, p);
+  const t = Math.min(1, Math.max(0, _d1.lengthSq() > 1e-9 ? _r.subVectors(x, p).dot(_d1) / _d1.lengthSq() : 0));
+  out.copy(p).addScaledVector(_d1, t);
+  return out.distanceToSquared(x);
+}
+
+// spark
+const spark = {};
+{
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 64;
+  const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(0.35, 'rgba(255,220,150,0.9)');
+  gr.addColorStop(1, 'rgba(255,150,50,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  spark.mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.14, 0.14),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(cv), transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    })
+  );
+  spark.mesh.visible = false;
+  spark.t = 1e9;
+  scene.add(spark.mesh);
+}
+function sparkAt(pos) {
+  spark.mesh.position.copy(pos);
+  spark.mesh.visible = true;
+  spark.t = 0;
+}
+
+// the square's AI: fast, aggressive, parries almost everything
+const ai = {
+  state: 'orbit', t: 0, nextAttack: 1.5,
+  angle: Math.PI, strafeDir: 1, flipAt: 2,
+  // strike path as OFFSETS from the square, so the saber stays in its hand
+  fromOff: new THREE.Vector3(), toOff: new THREE.Vector3(),
+  strikeFromD: new THREE.Vector3(), strikeToD: new THREE.Vector3(),
+  // slightly slow reflexes: blocks are delayed and not guaranteed
+  parryStart: 1e9, parryUntil: -1e9, parryCd: -1e9,
+};
+const _sqTarget = new THREE.Vector3(), _toHead = new THREE.Vector3();
+const _eDir = new THREE.Vector3(), _eBase = new THREE.Vector3();
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _qInv = new THREE.Quaternion();
+const NEG_Z = new THREE.Vector3(0, 0, -1);
+
+// blade segment vs the square's oriented box (whole structure is the hitbox)
+function bladeHitsSquare(b0, b1) {
+  _qInv.copy(squareGroup.quaternion).invert();
+  for (let i = 0; i <= 8; i++) {
+    _v1.lerpVectors(b0, b1, i / 8).sub(squareGroup.position).applyQuaternion(_qInv);
+    const dx = Math.max(Math.abs(_v1.x) - SQ_HALF.x, 0);
+    const dy = Math.max(Math.abs(_v1.y) - SQ_HALF.y, 0);
+    const dz = Math.max(Math.abs(_v1.z) - SQ_HALF.z, 0);
+    if (dx * dx + dy * dy + dz * dz <= 0.0016) return true;   // ~4cm skin
+  }
+  return false;
+}
+
+function enterFight() {
+  worldMode = 'fight';
+  if (roomRoot) roomRoot.visible = false;
+  if (fightRoot) fightRoot.visible = true;
+  uiAnchor.visible = false;   // no PLAY/TRAVEL buttons in the confrontation
+  skyGroup.visible = true;    // the galaxy hangs over the sands
+  duel.active = true;
+  resetDuelState();
+  rigPos.set(0, fightFloorY, 0);
+  uiAnchor.position.set(0, fightFloorY, 0);
+  camera.position.set(0, fightFloorY + 1.6, 3);
+  controls.target.set(0, fightFloorY + 1.2, 0);
+  rigDirty = true;
+  controls.update();
+  squareGroup.visible = true;
+  humGain?.gain?.setTargetAtTime(0.10, audioCtx?.currentTime ?? 0, 0.4);
+}
+
+function resetDuelState() {
+  duel.playerHP = 100; duel.squareHP = 100;
+  duel.dead = false;
+  duel.iFrameUntil = duel.squareHitCd = duel.squareDownUntil = -1e9;
+  ai.state = 'orbit'; ai.t = 0; ai.nextAttack = clock.elapsedTime + 1.5;
+  ai.parryStart = 1e9; ai.parryUntil = -1e9; ai.parryCd = -1e9;
+  squareGroup.position.set(0, fightFloorY + 1.35, -2);
+  drawHealth(); drawSquareBar();
+  deathPanel.mesh.visible = false;
+}
+function resetDuel() {
+  resetDuelState();
+  rigPos.set(0, fightFloorY, 0);
+  rigDirty = true;
+  breathGain?.gain?.setTargetAtTime(0.9, audioCtx?.currentTime ?? 0, 0.5);
+}
+
+function die() {
+  duel.dead = true;
+  headObj().getWorldPosition(_camPos);
+  headObj().getWorldDirection(_fwd);
+  _fwd.y = 0; _fwd.normalize();
+  deathPanel.mesh.position.copy(_camPos).addScaledVector(_fwd, 1.4);
+  deathPanel.mesh.lookAt(_camPos);
+  deathPanel.mesh.visible = true;
+  // the breath fills the silence; the march backs off
+  breathGain?.gain?.setTargetAtTime(1.0, audioCtx?.currentTime ?? 0, 0.3);
+  humGain?.gain?.setTargetAtTime(0.02, audioCtx?.currentTime ?? 0, 0.3);
+  rumble(1.0, 400);
+}
+
+function updateDuel(dt, now) {
+  const presenting = renderer.xr.isPresenting;
+  const sabersOn = duel.active && presenting && !duel.dead;
+  pSaber.root.visible = sabersOn;
+  eSaber.root.visible = duel.active && !duel.dead && now > duel.squareDownUntil;
+  healthBar.mesh.visible = sabersOn;
+  squareGroup.visible = duel.active;
+  if (!duel.active) return;
+
+  headObj().getWorldPosition(_camPos);
+
+  // invisible barrier: the sands stretch on, the duelist does not
+  if (presenting) {
+    const bd = Math.hypot(_camPos.x, _camPos.z);
+    if (bd > 24) {
+      rigPos.x -= (_camPos.x / bd) * (bd - 24);
+      rigPos.z -= (_camPos.z / bd) * (bd - 24);
+      rigDirty = true;
+    }
+  }
+
+  // --- square movement: quick orbit, direction flips, dash on attack
+  const down = now < duel.squareDownUntil;
+  if (!duel.dead && !down) {
+    if (now > ai.flipAt) { ai.strafeDir *= Math.random() < 0.7 ? -1 : 1; ai.flipAt = now + 1.0 + Math.random() * 1.6; }
+    ai.angle += ai.strafeDir * 1.5 * dt;
+    const dist = ai.state === 'strike' ? 1.2 : 1.95;
+    _sqTarget.set(
+      _camPos.x + Math.sin(ai.angle) * dist,
+      _camPos.y - 0.2 + Math.sin(now * 2.1) * 0.08,   // chest height, follows you
+      _camPos.z + Math.cos(ai.angle) * dist
+    );
+    squareGroup.position.lerp(_sqTarget, Math.min(1, 7 * dt));
+    squareGroup.lookAt(_camPos.x, squareGroup.position.y, _camPos.z);
+  } else if (down) {
+    squareGroup.position.y = Math.max(fightFloorY + 0.3, squareGroup.position.y - dt * 1.2);
+    squareGroup.rotation.z += dt * 5;
+  }
+  // defeat reads via the fall + spin; opacity tricks caused seams
+  squareGroup.scale.setScalar(down ? 0.85 : 1);
+
+  // --- player saber pose (tracked -> virtual with collision constraint)
+  const mainGrip = gripFor('right', 0);
+  if (sabersOn && mainGrip) {
+    mainGrip.getWorldPosition(_v1);
+    mainGrip.getWorldQuaternion(_q);
+    if (!pSaber.haveVirt) { pSaber.virtQuat.copy(_q); pSaber.haveVirt = true; }
+    // smooth reconnect toward the tracked pose
+    pSaber.virtQuat.slerp(_q, 1 - Math.exp(-14 * dt));
+    pSaber.root.position.copy(_v1);   // hilt stays locked to the hand
+  }
+
+  // --- enemy saber pose from AI state
+  if (!duel.dead && !down) {
+    ai.t += dt;
+    _toHead.subVectors(_camPos, squareGroup.position).normalize();
+    const side = _v2.crossVectors(_toHead, UP).normalize();
+    const setStrikeTargets = () => {
+      ai.fromOff.copy(side).multiplyScalar(0.55).addScaledVector(UP, 0.55);
+      ai.strikeFromD.copy(side).multiplyScalar(-0.4).addScaledVector(UP, 0.9).normalize();
+      ai.toOff.subVectors(_camPos, squareGroup.position);
+      const reach = Math.min(Math.max(ai.toOff.length() - 0.35, 0.45), 1.05);
+      ai.toOff.normalize().multiplyScalar(reach).addScaledVector(UP, -0.1);
+      ai.strikeToD.copy(_toHead).addScaledVector(UP, -0.55).normalize();
+    };
+    if (ai.state === 'orbit') {
+      _eBase.copy(squareGroup.position).addScaledVector(side, 0.32).addScaledVector(UP, -0.1);
+      _eDir.copy(UP).multiplyScalar(0.9).addScaledVector(_toHead, 0.3).normalize();
+      if (now > ai.nextAttack) {
+        ai.state = 'windup'; ai.t = 0;
+        setStrikeTargets();
+      }
+    } else if (ai.state === 'windup') {
+      const k = Math.min(1, ai.t / 0.2);
+      _eBase.copy(squareGroup.position)
+        .addScaledVector(side, 0.32 * (1 - k))
+        .addScaledVector(ai.fromOff, k);
+      _eDir.copy(ai.strikeFromD);
+      if (ai.t >= 0.2) {
+        if (Math.random() < 0.3) {   // feint to the other side
+          side.multiplyScalar(-1);
+          setStrikeTargets();
+        }
+        ai.state = 'strike'; ai.t = 0;
+      }
+    } else if (ai.state === 'strike') {
+      const k = Math.min(1, ai.t / 0.17);
+      // guided swing: re-aim at the head's CURRENT position every frame
+      _v2.subVectors(_camPos, squareGroup.position);
+      const reach = Math.min(Math.max(_v2.length() - 0.15, 0.45), 1.15);
+      ai.toOff.copy(_v2).normalize().multiplyScalar(reach).addScaledVector(UP, -0.05);
+      ai.strikeToD.copy(_toHead).addScaledVector(UP, -0.55).normalize();
+      _v1.lerpVectors(ai.fromOff, ai.toOff, k);
+      _eBase.copy(squareGroup.position).add(_v1);   // hand-relative: never thrown
+      _eDir.lerpVectors(ai.strikeFromD, ai.strikeToD, k).normalize();
+      if (ai.t >= 0.17) { ai.state = 'recover'; ai.t = 0; }
+    } else if (ai.state === 'recover') {
+      _eBase.copy(squareGroup.position).addScaledVector(side, 0.35).addScaledVector(UP, -0.15);
+      _eDir.copy(UP).multiplyScalar(0.8).addScaledVector(side, 0.4).normalize();
+      if (ai.t >= 0.32) {
+        ai.state = 'orbit'; ai.t = 0;
+        ai.nextAttack = now + 0.7 + Math.random() * 1.1;
+      }
+    }
+
+    // defense with human reflexes: reacts ~160-280ms late, ~75% of the time
+    if (ai.state !== 'strike' && sabersOn) {
+      const tipDist = pSaber.prevTip.distanceTo(squareGroup.position);
+      const approaching = pSaber.tipVel.dot(_v1.subVectors(squareGroup.position, pSaber.prevTip).normalize()) > 1.0;
+      if (tipDist < 1.15 && approaching && now > ai.parryCd) {
+        ai.parryCd = now + 0.55;   // one read per exchange
+        if (Math.random() < 0.75) {
+          ai.parryStart = now + 0.16 + Math.random() * 0.12;
+          ai.parryUntil = ai.parryStart + 0.32;
+        }
+      }
+      if (now >= ai.parryStart && now < ai.parryUntil) {
+        _eBase.copy(squareGroup.position).addScaledVector(_toHead, 0.45).addScaledVector(UP, 0.1);
+        _v1.subVectors(pSaber.prevTip, pSaber.prevBase).normalize();
+        _eDir.crossVectors(_v1, _toHead);
+        if (_eDir.lengthSq() < 0.05) _eDir.copy(UP);
+        _eDir.normalize();
+        if (ai.state === 'orbit' && Math.random() < 0.012) { ai.nextAttack = now; }  // counter
+      }
+    }
+
+    // apply enemy saber pose (blade points along dir; base is the hilt)
+    eSaber.root.position.copy(_eBase);
+    _q.setFromUnitVectors(NEG_Z, _eDir);
+    eSaber.root.quaternion.copy(_q);
+  }
+
+  // current enemy blade segment
+  _v1.set(0, 0, -1).applyQuaternion(eSaber.root.quaternion);
+  eSaber.base.copy(eSaber.root.position).addScaledVector(_v1, BLADE_EMIT);
+  eSaber.tip.copy(eSaber.root.position).addScaledVector(_v1, BLADE_EMIT + BLADE_LEN);
+  if (!eSaber.havePrev) { eSaber.prevBase.copy(eSaber.base); eSaber.prevTip.copy(eSaber.tip); eSaber.havePrev = true; }
+
+  if (sabersOn && pSaber.haveVirt) {
+    // candidate player blade from virtual pose
+    const bladeSeg = () => {
+      _v1.set(0, 0, -1).applyQuaternion(pSaber.virtQuat);
+      _v2.copy(pSaber.root.position).addScaledVector(_v1, BLADE_EMIT);
+      _sqTarget.copy(pSaber.root.position).addScaledVector(_v1, BLADE_EMIT + BLADE_LEN);
+    };
+    bladeSeg();
+    const candBase = _v2.clone(), candTip = _sqTarget.clone();
+    if (!pSaber.havePrev) { pSaber.prevBase.copy(candBase); pSaber.prevTip.copy(candTip); pSaber.havePrev = true; }
+
+    // continuous collision: sample the swept blade against the swept enemy blade
+    let clashK = -1;
+    for (let k = 1; k <= 4; k++) {
+      const u = k / 4;
+      _v1.lerpVectors(pSaber.prevBase, candBase, u);
+      _v2.lerpVectors(pSaber.prevTip, candTip, u);
+      _eBase.lerpVectors(eSaber.prevBase, eSaber.base, u);
+      _eDir.lerpVectors(eSaber.prevTip, eSaber.tip, u);
+      if (segSeg(_v1, _v2, _eBase, _eDir, _cA, _cB) < BLADE_R * BLADE_R) { clashK = u; break; }
+    }
+    if (clashK !== -1) {
+      if (!pSaber.contact) {
+        const relSpeed = pSaber.tipVel.length();
+        rumble(Math.min(1, 0.4 + relSpeed * 0.15), 70, 'right');
+        sparkAt(_cA.clone().add(_cB).multiplyScalar(0.5));
+        playClash(relSpeed);
+      } else {
+        rumble(0.15, 16, 'right');   // grinding
+      }
+      pSaber.contact = true;
+      // constraint: pivot the blade around the hilt so the contact point sits
+      // exactly at the surface; the hand itself is never blocked
+      for (let iter = 0; iter < 2; iter++) {
+        _v1.set(0, 0, -1).applyQuaternion(pSaber.virtQuat);
+        _v2.copy(pSaber.root.position).addScaledVector(_v1, BLADE_EMIT);
+        _sqTarget.copy(pSaber.root.position).addScaledVector(_v1, BLADE_EMIT + BLADE_LEN);
+        const d2 = segSeg(_v2, _sqTarget, eSaber.base, eSaber.tip, _cA, _cB);
+        const d = Math.sqrt(d2);
+        const need = BLADE_R - d;
+        if (need <= 0) break;
+        _toHead.subVectors(_cA, _cB);
+        if (_toHead.lengthSq() < 1e-8) _toHead.copy(UP);
+        _toHead.normalize();
+        _v1.subVectors(_cA, pSaber.root.position);
+        const arm = Math.max(0.15, _v1.length());
+        _v2.crossVectors(_v1, _toHead).normalize();
+        _q.setFromAxisAngle(_v2, need / arm);
+        pSaber.virtQuat.premultiply(_q);
+      }
+      // if the hand pushed way past the block, let the blade slide through
+      mainGrip.getWorldQuaternion(_q);
+      if (pSaber.virtQuat.angleTo(_q) > 1.1) {
+        pSaber.virtQuat.copy(_q);
+        pSaber.contact = false;
+      }
+    } else {
+      pSaber.contact = false;
+    }
+    pSaber.root.quaternion.copy(pSaber.virtQuat);
+
+    // final segment bookkeeping + tip velocity
+    bladeSeg();
+    pSaber.tipVel.subVectors(_sqTarget, pSaber.prevTip).divideScalar(Math.max(dt, 1e-3));
+    pSaber.prevBase.copy(_v2);
+    pSaber.prevTip.copy(_sqTarget);
+
+    // player blade vs the square's body (full box hitbox)
+    const parrying = now >= ai.parryStart && now < ai.parryUntil;
+    if (!down && now > duel.squareHitCd && !parrying) {
+      if (bladeHitsSquare(_v2, _sqTarget)) {
+        duel.squareHP -= 20;
+        duel.squareHitCd = now + 0.45;
+        sparkAt(_cA.copy(squareGroup.position));
+        playClash(2);
+        drawSquareBar();
+        if (duel.squareHP <= 0) {
+          duel.squareDownUntil = now + 3;
+          duel.squareHP = 100;
+          setTimeout(drawSquareBar, 3100);
+        }
+      }
+    }
+
+    // health bar rides the off hand
+    const off = gripFor('left', 1);
+    if (off) {
+      off.getWorldPosition(healthBar.mesh.position);
+      off.getWorldQuaternion(healthBar.mesh.quaternion);
+      healthBar.mesh.translateY(0.03);
+      healthBar.mesh.translateZ(0.02);
+      healthBar.mesh.rotateX(-1.0);
+    }
+  }
+
+  // enemy blade vs player head/chest (swept)
+  if (!duel.dead && !down && now > duel.iFrameUntil) {
+    let hit = false;
+    for (let k = 1; k <= 4 && !hit; k++) {
+      const u = k / 4;
+      _v1.lerpVectors(eSaber.prevBase, eSaber.base, u);
+      _v2.lerpVectors(eSaber.prevTip, eSaber.tip, u);
+      if (segPoint(_v1, _v2, _camPos, _cA) < 0.18 * 0.18) hit = true;
+      _cB.copy(_camPos); _cB.y -= 0.38;
+      if (!hit && segPoint(_v1, _v2, _cB, _cA) < 0.24 * 0.24) hit = true;
+    }
+    if (hit) {
+      duel.playerHP -= 12;
+      duel.iFrameUntil = now + 0.8;
+      hurtT = 0.5;
+      rumble(1.0, 250);
+      playClash(3);
+      drawHealth();
+      if (duel.playerHP <= 0) die();
+    }
+  }
+  eSaber.prevBase.copy(eSaber.base);
+  eSaber.prevTip.copy(eSaber.tip);
+
+  // spark life
+  if (spark.t < 0.14) {
+    spark.t += dt;
+    const u = spark.t / 0.14;
+    spark.mesh.scale.setScalar(1 + u * 1.2);
+    spark.mesh.material.opacity = 1 - u;
+    spark.mesh.quaternion.copy(headObj().quaternion ?? camera.quaternion);
+  } else {
+    spark.mesh.visible = false;
+  }
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const now = clock.elapsedTime;
+
+  if (renderer.xr.isPresenting) {
+    if (!baseRefSpace) {
+      baseRefSpace = renderer.xr.getReferenceSpace();
+      applyRig();
+    }
+    handleInput(dt);
+  }
+  updateForcePush(dt);
+  if (worldMode === 'fight') updateDuel(dt, now);
+  if (rigDirty) { applyRig(); rigDirty = false; }
+
+  if (travel) {
+    travel.k += dt / 0.6;
+    if (travel.phase === 'out') {
+      fadeMat.opacity = Math.min(1, travel.k);
+      if (travel.k >= 1) { travel.fn(); travel.phase = 'in'; travel.k = 0; }
+    } else {
+      fadeMat.opacity = 1 - Math.min(1, travel.k);
+      if (travel.k >= 1) { travel = null; fadeSphere.visible = false; }
+    }
+  }
+  if (hurtT > 0) {
+    hurtT -= dt;
+    hurtMat.opacity = Math.max(0, hurtT) * 0.9;
+    hurtSphere.visible = hurtT > 0;
+  }
+  headObj().getWorldPosition(_camPos);
+  if (fadeSphere.visible) fadeSphere.position.copy(_camPos);
+  if (hurtSphere.visible) hurtSphere.position.copy(_camPos);
+
+  if (worldMode === 'fight') {
+    uSkyTime.value = 500 + now * 0.4;
+    skyGroup.userData.spiral.rotation.y = -now * 0.006;
+    if (fightMixer) fightMixer.update(dt);
+  }
+
+  if (musicEl && isFinite(musicEl.duration) && musicEl.duration > 0) {
+    const pos = musicEl.currentTime, dur = musicEl.duration;
+    musicEl.volume = MUSIC_VOL * (voicePlaying ? 0.3 : 1) * (duel.dead ? 0.15 : 1) *
+      Math.max(0, Math.min(1, pos / MUSIC_FADE, (dur - pos) / MUSIC_FADE));
+  }
+
+  if (worldMode === 'room') {
+    const vdx = _camPos.x - HOLO_POS.x, vdz = _camPos.z - HOLO_POS.z;
+    const insideVoice = Math.hypot(vdx, vdz) < VOICE_RADIUS;
+    if (insideVoice && !wasInsideVoice) tryVoice();
+    wasInsideVoice = insideVoice;
+    if (introVoiceAt !== null && now > introVoiceAt) { introVoiceAt = null; tryVoice(); }
+  }
+
+  if (audioCtx) {
+    const m = headObj().matrixWorld.elements;
+    audioCtx.listener.setPosition?.(_camPos.x, _camPos.y, _camPos.z);
+    audioCtx.listener.setOrientation?.(-m[8], -m[9], -m[10], m[4], m[5], m[6]);
+  }
+
+  const running = audioCtx && audioCtx.state === 'running';
+  let lit;
+  if (running && analyser && breathStarted) {
+    lit = breathFromAnalyser(dt);
+  } else if (running && synthT0 !== null) {
+    lit = breathEnv((audioCtx.currentTime - synthT0) % (BREATH_CYCLE + BREATH_GAP));
+  } else {
+    lit = 0.8;
+  }
+  // breathing modulation is a briefing-room effect only; the confrontation
+  // renders with constant, as-authored lighting
+  if (worldMode === 'room') {
+    const flut = 1 + 0.035 * Math.sin(now * 13.7) + 0.025 * Math.sin(now * 5.3 + 1.7);
+    const f = (0.05 + 0.90 * lit) * flut;
+    for (const p of pulsing) p.material.emissiveIntensity = p.base * f;
+    holoBreath.value = (0.45 + 0.5 * lit) * flut;
+    scene.environmentIntensity = (0.03 + 0.82 * lit) * flut;
+    for (const L of breathingLights) L.intensity = L.userData.base * (0.03 + 0.82 * lit) * flut;
+  }
+
+  postProcessing.render();
+});
+</script>
+</body>
+</html>
