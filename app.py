@@ -12,10 +12,12 @@ configured, so one console shows intrusions across both surfaces.
 
 import os
 import re
+import html
 import json
 import time
 import threading
 import urllib.request
+from urllib.parse import unquote
 from datetime import datetime, timezone
 
 from flask import Flask, render_template, request, jsonify, abort
@@ -66,14 +68,42 @@ _SIG_RE = re.compile(
 )
 
 
+def _normalize(value: str) -> str:
+    """De-obfuscate a target so encoded payloads that evade a signature WAF are
+    still recognised: peel URL-encoding (incl. double), decode HTML entities,
+    strip inline SQL comments, collapse whitespace."""
+    s = value
+    for _ in range(2):
+        if '%' not in s:
+            break
+        try:
+            dec = unquote(s)
+        except Exception:
+            break
+        if dec == s:
+            break
+        s = dec
+    try:
+        s = html.unescape(s)
+    except Exception:
+        pass
+    s = re.sub(r'/\*.*?\*/', ' ', s, flags=re.DOTALL).replace('/**/', ' ')
+    return re.sub(r'\s+', ' ', s)
+
+
 def _classify(path_and_query: str):
-    """Return a threat category if the target smells hostile, else None."""
-    if re.search('|'.join(_SQLI_PATTERNS), path_and_query, re.IGNORECASE | re.DOTALL):
-        return 'SQLI_PROBE'
-    if re.search('|'.join(_XSS_PATTERNS), path_and_query, re.IGNORECASE):
-        return 'XSS_PROBE'
-    if re.search('|'.join(_SCANNER_PATHS), path_and_query, re.IGNORECASE):
-        return 'SCANNER'
+    """Return a threat category if the target smells hostile, else None.
+    Checks both the raw target and a de-obfuscated form so encoded probes count."""
+    candidates = (path_and_query, _normalize(path_and_query))
+    for probe in candidates:
+        if re.search('|'.join(_SQLI_PATTERNS), probe, re.IGNORECASE | re.DOTALL):
+            return 'SQLI_PROBE'
+    for probe in candidates:
+        if re.search('|'.join(_XSS_PATTERNS), probe, re.IGNORECASE):
+            return 'XSS_PROBE'
+    for probe in candidates:
+        if re.search('|'.join(_SCANNER_PATHS), probe, re.IGNORECASE):
+            return 'SCANNER'
     return None
 
 
