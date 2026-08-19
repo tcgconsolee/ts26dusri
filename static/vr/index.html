@@ -742,21 +742,49 @@ const eSaber = {
 const squareGroup = new THREE.Group();
 const SQ_HALF = new THREE.Vector3(0.275, 0.275, 0.09);
 const squareMats = [];
+let squareFaceMat = null;
+const hitTextures = [];   // textures cycled while the penguin is struck
+let squareFlashUntil = -1e9, squareFlashNext = 0;
 {
-  const tex = new THREE.TextureLoader().load('square.png');
-  tex.colorSpace = THREE.SRGBColorSpace;
-  // opaque everywhere: transparency on box faces causes seam/gap artifacts
-  const faceMat = new THREE.MeshBasicMaterial({ map: tex });
+  const loader2 = new THREE.TextureLoader();
+  const load = (name) => {
+    const t = loader2.load(name, undefined, undefined, () => {});   // silent on 404
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const baseTex = load('square.png');
+  // hit-flash set: the normal face + the extra portraits (stretched to the
+  // square face automatically). Missing files just never join the rotation.
+  hitTextures.push(baseTex);
+  for (const n of ['penguin1.png', 'penguin2.png', 'penguin3.png']) {
+    hitTextures.push(load(n));
+  }
+  squareFaceMat = new THREE.MeshBasicMaterial({ map: baseTex });
   const sideMat = new THREE.MeshStandardMaterial({
     color: 0x14161c, metalness: 0.8, roughness: 0.4
   });
   // box material order: +x,-x,+y,-y,+z(front),-z(back)
-  const mats = [sideMat, sideMat, sideMat, sideMat, faceMat, faceMat];
+  const mats = [sideMat, sideMat, sideMat, sideMat, squareFaceMat, squareFaceMat];
   const box = new THREE.Mesh(
     new THREE.BoxGeometry(SQ_HALF.x * 2, SQ_HALF.y * 2, SQ_HALF.z * 2), mats
   );
   squareGroup.add(box);
-  squareMats.push(faceMat, sideMat);
+  squareMats.push(squareFaceMat, sideMat);
+}
+const baseFaceTex = () => hitTextures[0];
+function flashPenguinFace(now) { squareFlashUntil = now + 0.6; }
+function updatePenguinFace(now) {
+  if (!squareFaceMat) return;
+  if (now < squareFlashUntil) {
+    if (now >= squareFlashNext) {
+      squareFlashNext = now + 0.07;   // ~14 swaps/sec
+      const t = hitTextures[(Math.random() * hitTextures.length) | 0];
+      if (t) { squareFaceMat.map = t; squareFaceMat.needsUpdate = true; }
+    }
+  } else if (squareFaceMat.map !== baseFaceTex()) {
+    squareFaceMat.map = baseFaceTex();
+    squareFaceMat.needsUpdate = true;
+  }
 }
 const squareBar = {};
 {
@@ -1062,6 +1090,7 @@ function updateDuel(dt, now) {
   squareGroup.visible = duel.active;
   if (!duel.active) return;
 
+  updatePenguinFace(now);
   headObj().getWorldPosition(_camPos);
 
   // invisible barrier: stays on the (scaled) plot
@@ -1266,6 +1295,7 @@ function updateDuel(dt, now) {
         duel.squareHitCd = now + 0.45;
         sparkAt(_cA.copy(squareGroup.position));
         playClash(2);
+        flashPenguinFace(now);   // face glitches through the portrait set
         drawSquareBar();
         if (duel.squareHP <= 0) {
           duel.squareDownUntil = now + 3;
