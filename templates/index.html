@@ -210,19 +210,7 @@
 <body>
 
   <!-- CRT OVERLAY -->
-  <div class="crt-overlay">
-    <div class="crt-scanlines"></div>
-    <canvas class="crt-grain" id="crtGrain"></canvas>
-    <div class="crt-scanners">
-      <span style="--dur:9s;  --del:0s;   --op:0.13;"></span>
-      <span style="--dur:14s; --del:-5s;  --op:0.08;"></span>
-      <span style="--dur:11s; --del:-2s;  --op:0.10;"></span>
-    </div>
-    <div class="crt-glow"></div>
-  </div>
-  <div class="crt-bevel"></div>
-
-<div id="loader">Loading... 0%</div>
+  <div id="loader">Loading... 0%</div>
 <canvas id="stage"></canvas>
 <canvas id="fluid"></canvas>
 
@@ -1021,5 +1009,6 @@
 
 })();
 </script>
+  <script src="{{ url_for('static', filename='crt.js') }}"></script>
 </body>
 </html>
