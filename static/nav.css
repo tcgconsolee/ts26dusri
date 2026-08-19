@@ -1,0 +1,95 @@
+/* Imperial navbar — shared across all terminal pages.
+   Capsule geometry to match the rounded CRT screen frame. */
+
+.navbar {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 8px 22px;
+  background: linear-gradient(180deg, rgba(26, 0, 0, 0.55), rgba(3, 3, 3, 0.94));
+  border: 1px solid var(--panel-border, #800000);
+  border-radius: 999px;                       /* full capsule */
+  box-shadow:
+    0 0 20px rgba(255, 0, 0, 0.10),
+    inset 0 0 30px rgba(255, 0, 0, 0.05);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-title {
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+}
+
+.status-dot { animation: incc-dot 1.6s ease-in-out infinite; }
+@keyframes incc-dot {
+  50% { opacity: 0.3; box-shadow: 0 0 2px var(--red-glow, #ff0000); }
+}
+
+/* links live inside a rounded track */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(128, 0, 0, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.nav-links a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 20px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-red, #e60000);
+  text-decoration: none;
+  border-radius: 999px;                       /* pill per link */
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s, text-shadow 0.2s;
+}
+
+.nav-links a:hover {
+  color: #ffffff;
+  background: rgba(255, 0, 0, 0.08);
+  text-shadow: 0 0 10px rgba(255, 51, 51, 0.7);
+}
+
+.nav-links a.active {
+  color: #ffffff;
+  background: linear-gradient(180deg, rgba(230, 0, 0, 0.28), rgba(90, 0, 0, 0.28));
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.35), inset 0 0 10px rgba(255, 0, 0, 0.15);
+  text-shadow: 0 0 8px rgba(255, 80, 80, 0.7);
+}
+
+/* VADER — glowing capsule accent */
+.nav-links a[href$="/vader"] {
+  margin-left: 8px;
+  padding: 8px 24px;
+  color: #ffffff;
+  font-weight: 800;
+  border: 1px solid var(--text-red, #e60000);
+  background: linear-gradient(180deg, rgba(230, 0, 0, 0.26), rgba(70, 0, 0, 0.3));
+  box-shadow: 0 0 14px rgba(255, 0, 0, 0.4), inset 0 0 12px rgba(255, 0, 0, 0.2);
+  animation: vader-pulse 3.2s ease-in-out infinite;
+}
+.nav-links a[href$="/vader"]:hover {
+  background: linear-gradient(180deg, rgba(255, 20, 20, 0.42), rgba(90, 0, 0, 0.42));
+  text-shadow: 0 0 12px rgba(255, 80, 80, 0.9);
+}
+@keyframes vader-pulse {
+  50% { box-shadow: 0 0 24px rgba(255, 0, 0, 0.65), inset 0 0 16px rgba(255, 0, 0, 0.32); }
+}
+
+@media (max-width: 900px) {
+  .navbar { flex-wrap: wrap; gap: 10px; border-radius: 22px; }
+  .nav-links { flex-wrap: wrap; border-radius: 22px; }
+}
