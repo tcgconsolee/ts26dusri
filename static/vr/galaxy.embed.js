@@ -1,6 +1,7 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from './vendor/OrbitControls.js'
+import { initHandZoom } from './galaxy-handzoom.js'
 
 const wrap = document.getElementById('galaxyWrap')
 const canvas = document.getElementById('galaxyCanvas')
@@ -1258,6 +1259,13 @@ async function init () {
   flyTo(HOME_POS, HOME_TGT, 2.6)
 
   window.__gx = { renderer, scene, camera, controls, select, deselect, frame, orbitGroup }
+
+  // Desktop webcam hand-gesture zoom (spread/pinch both hands to expand/shorten)
+  try {
+    initHandZoom({ canvas, controls, camera, renderer, wrap })
+  } catch (err) {
+    console.warn('[galaxy-handzoom] init failed:', err)
+  }
 
   function loadingFail (msg) {
     const l = document.getElementById('gxLoading')
