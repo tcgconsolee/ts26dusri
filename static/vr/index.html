@@ -506,6 +506,7 @@ function loadFight() {
         // as-authored geometry/materials; lit by one elongated soft light
         // hanging over the structure (no smooth ambient fill)
         fightRoot = g.scene;
+        fightRoot.scale.setScalar(2);   // larger arena
         fightFloorY = 0;
         THREE.RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init());
         const strip = new THREE.RectAreaLight(0xffe7c4, 6, 6, 1.6);
@@ -1062,12 +1063,12 @@ function updateDuel(dt, now) {
 
   headObj().getWorldPosition(_camPos);
 
-  // invisible barrier: the sands stretch on, the duelist does not
+  // invisible barrier: stays on the (scaled) plot
   if (presenting) {
     const bd = Math.hypot(_camPos.x, _camPos.z);
-    if (bd > 24) {
-      rigPos.x -= (_camPos.x / bd) * (bd - 24);
-      rigPos.z -= (_camPos.z / bd) * (bd - 24);
+    if (bd > 14) {
+      rigPos.x -= (_camPos.x / bd) * (bd - 14);
+      rigPos.z -= (_camPos.z / bd) * (bd - 14);
       rigDirty = true;
     }
   }

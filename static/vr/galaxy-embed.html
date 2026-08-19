@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="/static/vr/">
+<title>Imperial Cartography</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="galaxy.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #galaxyWrap { position: fixed; inset: 0; }
+  #galaxyCanvas { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+
+<div class="admin-display" id="galaxyWrap">
+  <div class="corner-square tl"></div>
+  <div class="corner-square tr"></div>
+  <div class="corner-square bl"></div>
+  <div class="corner-square br"></div>
+
+  <canvas id="galaxyCanvas"></canvas>
+
+  <div class="gx-topbar">
+    <div class="gx-search">
+      <input id="gxSearchInput" type="text" placeholder="SEARCH SYSTEM..." autocomplete="off" spellcheck="false">
+      <ul id="gxSearchList"></ul>
+    </div>
+    <button id="gxReset" title="Return to galactic overview">&#8982; RESET VIEW</button>
+  </div>
+
+  <div id="gxTooltip"></div>
+
+  <div class="planet-panel" id="planetPanel"></div>
+
+  <div class="gx-hud">
+    <div>THE NEW AND IMPROVED GALACTIC EMPIRE</div>
+    <div>HEIL LORD VADER</div>
+    <div id="gxCoords">X +0.0&nbsp;&nbsp;Z +0.0</div>
+  </div>
+
+  <div id="gxLoading">PERHAPS THE ARCHIVES WERE COMPLETE</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="galaxy.embed.js"></script>
+</body>
+</html>

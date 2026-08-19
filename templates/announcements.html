@@ -409,6 +409,130 @@
     color: #333;
     letter-spacing: 1px;
   }
+
+  /* ==========================================
+     LIVE INTRUSION FEED (honeypot notifications)
+     ========================================== */
+  .intrusion-summary {
+    display: flex;
+    gap: 16px;
+    margin: 10px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+  .intrusion-summary b {
+    color: var(--red-bright);
+    font-size: 13px;
+    margin-right: 3px;
+  }
+
+  .intrusion-feed {
+    flex: 1;
+    min-height: 90px;
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-red) #111;
+  }
+  .intrusion-feed::-webkit-scrollbar { width: 5px; }
+  .intrusion-feed::-webkit-scrollbar-track { background: #0a0000; }
+  .intrusion-feed::-webkit-scrollbar-thumb { background: var(--panel-border); }
+
+  .intrusion-empty {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #3a1010;
+    letter-spacing: 1px;
+    padding: 8px 2px;
+  }
+
+  .intrusion-item {
+    border: 1px solid var(--subpanel-border);
+    border-left: 2px solid var(--text-red);
+    background: #0a0000;
+    padding: 8px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    animation: intrusionIn 0.35s ease;
+  }
+  .intrusion-item.new { animation: intrusionFlash 1.1s ease; }
+
+  .intrusion-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .intr-badge {
+    font-size: 8px;
+    letter-spacing: 1px;
+    padding: 1px 5px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .intr-badge.sqli    { color: #ff4a3d; border-color: #ff4a3d; }
+  .intr-badge.scanner { color: #ffb04a; border-color: #7a4a10; }
+  .intr-badge.xss     { color: #ff7ad0; border-color: #7a1050; }
+  .intr-badge.probe   { color: var(--text-muted); border-color: #333; }
+  .intr-ip {
+    color: var(--white);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .intr-src {
+    margin-left: auto;
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: #555;
+  }
+  .intr-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  .intr-loc { color: #5aa9d6; }
+  .intr-loc.pending { color: #444; font-style: italic; }
+  .intr-target {
+    color: #b06060;
+    word-break: break-all;
+    margin-top: 3px;
+    font-size: 9px;
+  }
+  .intr-time { color: #555; }
+
+  .live-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--red-bright);
+    box-shadow: 0 0 6px var(--red-glow);
+    margin-right: 7px;
+    vertical-align: middle;
+    animation: livePulse 1.4s ease-in-out infinite;
+  }
+  #alStatus { display: flex; align-items: center; font-size: 18px; }
+
+  @keyframes intrusionIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes intrusionFlash {
+    0%   { background: #3a0000; border-left-color: #ff6a5a; }
+    100% { background: #0a0000; border-left-color: var(--text-red); }
+  }
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+  }
 </style>
 </head>
 <body>
@@ -462,14 +586,26 @@
         <div class="panel-desc">Garrison directive 409-B active across Outer Rim terminals. All local commanders check-in required.</div>
       </div>
 
-      <!-- MIDDLE LEFT PANEL -->
-      <div class="info-panel panel-2">
+      <!-- MIDDLE LEFT PANEL — LIVE INTRUSION FEED -->
+      <div class="info-panel panel-2" id="intrusionPanel">
         <div>
-          <div class="panel-label">// DEFENSE PROTOCOL</div>
+          <div class="panel-label">// DEFENSE PROTOCOL · HONEYPOT</div>
           <div class="panel-title">ALERT LEVEL RED</div>
         </div>
-        <div class="panel-desc">Unauthorized vessel detected near Lothal sector perimeter. Scramble TIE squadrons immediately upon confirmation.</div>
-        <div class="panel-stat">ACTIVE</div>
+
+        <div class="panel-desc" style="margin:6px 0 2px;">Unauthorized vessel detected near Lothal sector perimeter. Scramble TIE squadrons immediately upon confirmation.</div>
+
+        <div class="intrusion-summary">
+          <span><b id="alTotal">0</b> CAPTURES</span>
+          <span><b id="alIps">0</b> HOSTILE IPs</span>
+          <span><b id="alSqli">0</b> SQLi</span>
+        </div>
+
+        <div class="intrusion-feed" id="intrusionFeed">
+          <div class="intrusion-empty">// PERIMETER QUIET — NO INTRUSIONS LOGGED</div>
+        </div>
+
+        <div class="panel-stat" id="alStatus"><span class="live-dot"></span>MONITORING</div>
       </div>
 
       <!-- BOTTOM LEFT PANEL -->
@@ -627,6 +763,90 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
     }
+
+    // ── LIVE INTRUSION FEED (honeypot notifications) ─────────────────────────
+    (function () {
+      const feed   = document.getElementById('intrusionFeed');
+      const elTot  = document.getElementById('alTotal');
+      const elIps  = document.getElementById('alIps');
+      const elSqli = document.getElementById('alSqli');
+      const elStat = document.getElementById('alStatus');
+      let seen = new Set();
+      let firstLoad = true;
+
+      function badgeClass(cat) {
+        cat = (cat || '').toUpperCase();
+        if (cat.indexOf('SQLI') !== -1) return 'sqli';
+        if (cat.indexOf('SCAN') !== -1) return 'scanner';
+        if (cat.indexOf('XSS')  !== -1) return 'xss';
+        return 'probe';
+      }
+      function badgeText(cat) {
+        cat = (cat || '').toUpperCase();
+        if (cat.indexOf('SQLI') !== -1) return 'SQLi';
+        if (cat.indexOf('SCAN') !== -1) return 'SCANNER';
+        if (cat.indexOf('XSS')  !== -1) return 'XSS';
+        return 'PROBE';
+      }
+      function fmtTime(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        const p = n => String(n).padStart(2, '0');
+        return p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds()) + ' UTC';
+      }
+
+      function render(alerts) {
+        if (!alerts.length) {
+          feed.innerHTML = '<div class="intrusion-empty">// PERIMETER QUIET — NO INTRUSIONS LOGGED</div>';
+          return;
+        }
+        const html = alerts.map(a => {
+          const key = (a.ip || '') + '|' + (a.target || '') + '|' + (a.time || '');
+          const isNew = !firstLoad && !seen.has(key);
+          seen.add(key);
+          const locPending = (a.location || '') === 'PENDING';
+          const loc = locPending
+            ? '<span class="intr-loc pending">locating…</span>'
+            : '<span class="intr-loc">◎ ' + escapeHtml(a.location || 'UNKNOWN') + '</span>';
+          return `
+            <div class="intrusion-item ${isNew ? 'new' : ''}">
+              <div class="intrusion-top">
+                <span class="intr-badge ${badgeClass(a.category)}">${badgeText(a.category)}</span>
+                <span class="intr-ip">${escapeHtml(a.ip || '?')}</span>
+                <span class="intr-src">${a.source === 'TERMINAL' ? 'TERMINAL' : 'INCC'}</span>
+              </div>
+              <div class="intr-meta">
+                ${loc}
+                <span class="intr-time">${fmtTime(a.time)}</span>
+                <span>${escapeHtml(a.method || 'GET')}</span>
+              </div>
+              <div class="intr-target">${escapeHtml(a.target || a.path || '')}</div>
+            </div>`;
+        }).join('');
+        feed.innerHTML = html;
+      }
+
+      function poll() {
+        fetch('/incc/api/alerts?limit=30', { cache: 'no-store' })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) throw new Error('bad response');
+            elTot.textContent  = data.stats.total;
+            elIps.textContent  = data.stats.unique_ips;
+            elSqli.textContent = data.stats.sqli;
+            render(data.alerts || []);
+            firstLoad = false;
+            elStat.innerHTML = '<span class="live-dot"></span>MONITORING';
+          })
+          .catch(() => {
+            elStat.innerHTML = '<span class="live-dot" style="background:#666;box-shadow:none"></span>FEED OFFLINE';
+          });
+      }
+
+      poll();
+      setInterval(poll, 5000);
+    })();
   </script>
 </body>
 </html>
