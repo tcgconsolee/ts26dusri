@@ -577,13 +577,20 @@
     <!-- LEFT COLUMN (3 PANELS) -->
     <div class="panel-box left-column">
       
-      <!-- TOP LEFT PANEL -->
+      <!-- TOP LEFT PANEL — JEDI SIGHTINGS (live from Imperial Cartography) -->
       <div class="info-panel panel-1">
         <div>
-          <div class="panel-label">// PRIORITY LEVEL 1</div>
-          <div class="panel-title">SECTOR BROADCAST</div>
+          <div class="panel-label">// CARTOGRAPHY UPLINK · LIVE</div>
+          <div class="panel-title">JEDI SIGHTINGS</div>
         </div>
-        <div class="panel-desc">Garrison directive 409-B active across Outer Rim terminals. All local commanders check-in required.</div>
+
+        <div class="panel-desc" style="margin:6px 0 2px;">Systems flagged by the cartography database. Report confirmed movement to your garrison commander.</div>
+
+        <div class="intrusion-feed" id="jediFeed" style="max-height:260px;">
+          <div class="intrusion-empty">// QUERYING CARTOGRAPHY DATABASE...</div>
+        </div>
+
+        <div class="panel-stat" id="jediStat"><span class="live-dot"></span>SCANNING</div>
       </div>
 
       <!-- MIDDLE LEFT PANEL — LIVE INTRUSION FEED -->
@@ -846,6 +853,49 @@
 
       poll();
       setInterval(poll, 5000);
+    })();
+  </script>
+
+  <script>
+    /* JEDI SIGHTINGS — computed from the cartography database with the exact
+       flagging rule the galaxy map uses, so both always agree. */
+    (function () {
+      const feed = document.getElementById('jediFeed');
+      const stat = document.getElementById('jediStat');
+      const jhash = str => {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return ((h >>> 0) % 1000) / 1000;
+      };
+      const grid = p => `${p.x >= 0 ? '+' : ''}${p.x.toFixed(1)} / ${p.z >= 0 ? '+' : ''}${p.z.toFixed(1)}`;
+      const sector = p => {
+        const r = Math.hypot(p.x, p.z);
+        return r < 10 ? 'DEEP CORE' : r < 22 ? 'CORE WORLDS' : r < 34 ? 'INNER RIM' : r < 46 ? 'MID RIM' : 'OUTER RIM';
+      };
+      const item = (top, sub, hot) => {
+        const d = document.createElement('div');
+        d.className = 'intrusion-item';
+        d.innerHTML = `<div class="intrusion-top">` +
+          `<span class="intr-badge ${hot ? 'sqli' : 'probe'}">${hot ? 'LATEST' : 'JEDI'}</span>` +
+          `<span class="intr-ip">${top}</span></div>` +
+          `<div class="intr-meta"><span>${sub}</span></div>`;
+        return d;
+      };
+      fetch('/static/vr/planets.json')
+        .then(r => r.json())
+        .then(DATA => {
+          const flagged = DATA.filter(p => jhash(p.n + ':jedi') < 0.05);
+          feed.innerHTML = '';
+          feed.appendChild(item('SKYWALKERSUXX LOCATED ON TATOOINE', 'IDENTITY CONFIRMED · OUTER RIM', true));
+          for (const p of flagged.slice(0, 60)) {
+            feed.appendChild(item('JEDI LOGGED ON ' + p.n.toUpperCase(), `GRID ${grid(p)} · ${sector(p)}`));
+          }
+          stat.innerHTML = '<span class="live-dot"></span>' + (flagged.length + 1) + ' ACTIVE TRAILS';
+        })
+        .catch(() => {
+          feed.innerHTML = '<div class="intrusion-empty">// CARTOGRAPHY DATABASE UNREACHABLE</div>';
+          stat.textContent = 'UPLINK DOWN';
+        });
     })();
   </script>
 </body>
