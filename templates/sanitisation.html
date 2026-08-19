@@ -206,6 +206,35 @@
     background: #ff1a1a;
     box-shadow: 0 0 18px var(--red-glow);
   }
+
+  /* Galaxy search — bottom bar, computer only */
+  .gx-ext-search { display: flex; align-items: stretch; }
+  #gxExtInput {
+    background: #000;
+    border: 1px solid #333;
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    color: var(--white);
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 14px 16px;
+    width: 200px;
+    outline: none;
+  }
+  #gxExtInput::placeholder { color: #666; }
+  #gxExtInput:focus { border-color: var(--text-red); }
+  .btn-search {
+    background: var(--text-red);
+    border: none;
+    color: var(--black);
+    font-weight: 800;
+    border-radius: 0 8px 8px 0;
+    box-shadow: 0 0 12px rgba(230, 0, 0, 0.4);
+  }
+  .btn-search:hover { background: #ff1a1a; }
+  @media (pointer: coarse) { .gx-ext-search { display: none; } }
 </style>
 <link rel="stylesheet" href="{{ url_for('static', filename='nav.css') }}">
 </head>
@@ -238,7 +267,6 @@
     .navbar, .bottom-bar { position: relative; z-index: 5; }
   </style>
   <iframe id="galaxyEmbed" src="/static/vr/galaxy-embed.html"
-          allow="camera; xr-spatial-tracking"
           style="position:fixed; inset:0; width:100%; height:100%; border:0; background:#000; z-index:0;"
           title="Imperial Cartography"></iframe>
 
@@ -247,10 +275,28 @@
     <h1 class="page-title">SELECT A PLANET</h1>
 
     <div class="action-buttons">
+      <form class="gx-ext-search" onsubmit="return gxDoSearch(event)">
+        <input id="gxExtInput" type="text" placeholder="Search system…" autocomplete="off" spellcheck="false">
+        <button type="submit" class="btn btn-search">Search</button>
+      </form>
       <button class="btn btn-organize">Organize</button>
       <button class="btn btn-announce">Announce</button>
     </div>
   </div>
+
+  <script>
+  // Bottom-bar search → drive the embedded galaxy (same-origin iframe).
+  function gxDoSearch(e){
+    if (e) e.preventDefault();
+    var v = document.getElementById('gxExtInput').value;
+    var f = document.getElementById('galaxyEmbed');
+    try {
+      var gx = f && f.contentWindow && f.contentWindow.__gx;
+      if (gx && gx.searchSelect) gx.searchSelect(v);
+    } catch (err) { /* iframe not ready yet */ }
+    return false;
+  }
+  </script>
 
   <script>
   (function(){

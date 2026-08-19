@@ -28,9 +28,9 @@
   #galaxyWrap { position: fixed; inset: 0; }
   #galaxyCanvas { width: 100%; height: 100%; display: block; }
 
-  /* Clear the sanitisation page's navbar (top) and bottom-bar so the map's
-     own search box and selection panel are fully visible, like on ts26. */
-  .gx-topbar    { top: 76px; }
+  /* The parent /sanitisation page provides its own search box in the bottom
+     bar, so hide the map's built-in top-left search + reset button here. */
+  .gx-topbar    { display: none; }
   .planet-panel { top: 76px; bottom: 104px; }
   .gx-hud       { bottom: 104px; }
 </style>
@@ -73,6 +73,6 @@
   }
 }
 </script>
-<script type="module" src="galaxy.embed.js?v=2"></script>
+<script type="module" src="galaxy.embed.js?v=3"></script>
 </body>
 </html>

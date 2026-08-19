@@ -1,7 +1,6 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from './vendor/OrbitControls.js'
-import { initHandZoom } from './galaxy-handzoom.js'
 
 const wrap = document.getElementById('galaxyWrap')
 const canvas = document.getElementById('galaxyCanvas')
@@ -1258,14 +1257,19 @@ async function init () {
   setTimeout(() => loading.remove(), 900)
   flyTo(HOME_POS, HOME_TGT, 2.6)
 
-  window.__gx = { renderer, scene, camera, controls, select, deselect, frame, orbitGroup }
-
-  // Desktop webcam hand-gesture zoom (spread/pinch both hands to expand/shorten)
-  try {
-    initHandZoom({ canvas, controls, camera, renderer, wrap })
-  } catch (err) {
-    console.warn('[galaxy-handzoom] init failed:', err)
+  // Search-by-name hook for an external (parent-page) search box.
+  const searchSelect = q => {
+    q = (q || '').trim().toLowerCase()
+    if (!q) return false
+    let idx = lowerNames.indexOf(q)
+    if (idx < 0) idx = lowerNames.findIndex(n => n.startsWith(q))
+    if (idx < 0) idx = lowerNames.findIndex(n => n.includes(q))
+    if (idx < 0) return false
+    select(idx)
+    return true
   }
+
+  window.__gx = { renderer, scene, camera, controls, select, deselect, frame, orbitGroup, searchSelect }
 
   function loadingFail (msg) {
     const l = document.getElementById('gxLoading')
